@@ -10,4 +10,14 @@ dotenv.config({
 
 
 
-connectDB();
+connectDB()
+.then(()=>{
+    app.listen(process.env.PORT || 0000,()=>{
+        console.log(`SERVER is running at port ${process.env.PORT}`);
+        
+    })
+})
+.catch((e)=>{
+console.log("MONOGODB CONNECTION FAILED !!!!!",e);
+    
+})
