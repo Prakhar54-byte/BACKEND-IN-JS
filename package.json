@@ -1,0 +1,16 @@
+{
+  "name": "backend-in-js",
+  "version": "1.0.0",
+  "description": "backend project for video streaming",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "javascript",
+    "Backend",
+    "prakhar"
+  ],
+  "author": "Prakhar",
+  "license": "ISC"
+}
