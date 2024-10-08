@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+// import cookieParser from 'cookie-parser';
 import cookieParser from 'cookie-parser';
 
 
@@ -29,7 +30,7 @@ app.use("/api/v1/users", userRouter);
 
 
 
-//  https://localhost:8000//api/v1/user/register
+//  https://localhost:8000//api/v1/users/register
 
 
 export  {app};
