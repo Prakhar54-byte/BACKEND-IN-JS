@@ -128,7 +128,7 @@ console.log(req.files);
 
 
 
-const logInUser = asyncHandler(async (req, res) => {
+const logInUser = asyncHandler(async (req, _) => { // _ is used to ignore the second parameter(because we are not using it)
     // 1. user input from frontend{email,password}
     // 2. validate it
     // 3. if user exists give message(call monogdb and check if user exists)
