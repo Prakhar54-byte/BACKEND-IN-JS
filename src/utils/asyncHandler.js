@@ -5,6 +5,7 @@ const asyncHandler = (requestHandler) => {
     }
 }
 
+export { asyncHandler };
 
 
 
@@ -29,5 +30,3 @@ Parameters and Return Value:(fn) => {}: This part defines a function that takes 
 */
 
 
-
-export { asyncHandler };

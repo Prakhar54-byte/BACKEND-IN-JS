@@ -12,9 +12,14 @@ allowedHeaders:true}
 ))
 
 app.use(express.urlencoded({extended: true,limit: "16kb"}));
+console.log("app 1");
+
 app.use(express.json({limit: "16kb "}));
+console.log("app 2");
 app.use(express.static('public'));//Pdf files it will be stored in Public folder
+console.log("app 3");
 app.use(cookieParser());
+console.log("app 4");
 
 
 // routes import 
