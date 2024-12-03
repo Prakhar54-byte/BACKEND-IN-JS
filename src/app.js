@@ -30,6 +30,7 @@ app.use("/api/v1/users", userRouter);
 
 
 //  https://localhost:8000//api/v1/users/register
+console.log("app.js is running");
 
 
 export  {app};
