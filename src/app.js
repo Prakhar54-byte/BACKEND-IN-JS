@@ -30,7 +30,9 @@ import userRouter from "./routers/user.routes.js";
 
 
 //routes declaration 
+// app.get()// we use app.get() to get the data from the server
 app.use("/api/v1/users", userRouter);
+
 
 
 
