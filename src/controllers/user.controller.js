@@ -24,10 +24,7 @@ const registerUser = asyncHandler(async(req,res)=>{
     // 7.remove password and refreshToken from the response
     // 8.check for user creation
     // 9.return res
-    res.status(200).json({
-        success:true,
-        message:"User Registered Successfully"
-    })
+  
 
 // Step 1
    const {fullName, email, password,username} = req.body;
@@ -44,23 +41,26 @@ const registerUser = asyncHandler(async(req,res)=>{
     }
 
 //Step 3
-    const existedUser = User.findOne({
+    const existedUser = await User.findOne({
         $or:[{username },{ email }]
     })
     if(existedUser){
+        // console.log("This is body",req.body);
         throw new ApiError(409,"User already exists");
     }
 //Step 4
 
     const avatarlocalPath = req.files?.avatar[0]?.path
-    const coverImagelocalPath = req.files?.coverImage[0]?.path
-
+    let coverImageLocalPath;
+    if (req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0) {
+        coverImageLocalPath = req.files.coverImage[0].path
+    }
     if(!avatarlocalPath){
         throw new ApiError(400,"Avatar is required");
     }
 // Step5
     const avatar = await uploadOnCloudinary(avatarlocalPath)
-    const coverImage = await uploadOnCloudinary(coverImagelocalPath)
+    const coverImage = await uploadOnCloudinary(coverImageLocalPath)
 
     if(!avatar || !coverImage){
         throw new ApiError(500,"Cloudinary Error");
@@ -88,9 +88,17 @@ const registerUser = asyncHandler(async(req,res)=>{
         throw new ApiError(500,"User not created");
     }
 // Step 9
-    return registerUser.status(201).json(
-        new ApiResponse(200,createdUser,"User Registered Successfully")
+return res.status(200).json(
+    new ApiResponse(
+        200,createdUser
+        // data:data
+
     )
+)
+
+
+
+
 })
 
 
