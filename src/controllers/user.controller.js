@@ -29,15 +29,17 @@ const registerUser = asyncHandler(async(req,res)=>{
 // Step 1
    const {fullName, email, password,username} = req.body;
     console.log("Email",email);
+    console.log(req.body);
+    
 
 //Step 2
     if(fullName===""){
         throw new ApiError(400,"Full Name is required");
     }
     if (
-        [email.username,password].some((field)=>field?.trim()==="")
+        [ email, username, password].some((field) => field?.trim() === "")
     ) {
-        throw new ApiError(400,"All fields are required");
+        throw new ApiError(400, "All fields are required")
     }
 
 //Step 3
