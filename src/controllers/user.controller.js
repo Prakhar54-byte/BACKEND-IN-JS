@@ -6,6 +6,24 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
 
+const generateAccessAndRefreshToken = async(userId)=>{
+    try {
+        const user = await User.findById(userId)
+       const acessToken =  user.generrateAccessToken()
+      const refreshToken=   user.generrateRefreshToken()
+
+      user.refreshToken = refreshToken
+      await user.save({ validateBeforeSave: false})
+
+      return {acessToken,refreshToken}
+      
+        
+    } catch (error) {
+        throw new ApiError(500,"Token generation failed");
+    }
+}
+
+
 const registerUser = asyncHandler(async(req,res)=>{
     // This is mine
     // 1. check if user exist
@@ -104,5 +122,67 @@ return res.status(200).json(
 })
 
 
+const logInUser = asyncHandler(async (req,res)=>{
+    // 1. Get user data 
+    // 2. check email and username
+    // 3. check if user exist if then continue
+    // 3. check password
+    // 4. acess and refresh token
+    // 5. senf tokens in form of cokkies
 
-export { registerUser }
+    const {email,password,username} = req.body
+    if(!username || !email){
+        throw new ApiError(400,"Username or email is required");
+    }
+
+
+    const user = await User.findOne({
+        $or:[{username},{email}]
+    })
+
+    if(!user){
+        throw new ApiError(404,"User not found");
+    }
+
+    const isPasswordValidate = await user.isPasswordCorrect(password)
+    if(!isPasswordValidate){
+        throw new ApiError(401,"Password is incorrect");
+    }
+   const {accessToken,refreshToken}= await generateAccessAndRefreshToken(user._id)
+
+   const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+
+   const options = {
+    httpOnly:true,
+    secure:true
+   }
+
+   return res
+   .status(200)
+   .cookie("accessToken",accessToken,options)
+   .cookie("refreshToken",refreshToken,options)
+   .json(
+    new ApiResponse(
+        200,
+        {
+            user:loggedInUser,accessToken,refreshToken
+        },
+        "User loggedIn"
+    )
+   )
+
+})
+
+
+
+const loggedOut = asyncHandler(async (req,res)=>{
+
+})
+
+
+
+
+export { 
+    registerUser,
+    logInUser
+ }
