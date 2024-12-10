@@ -212,8 +212,8 @@ const loggedOut = asyncHandler(async (req, res) => {
 });
 
 
+const refreshAccessToken= asyncHandler(async (req,res)=>{
 try {
-  const refreshAccessToken= asyncHandler(async (req,res)=>{
     const incomingrefreshToken= req.cookie.refreshToken || req.body.refreshToken
   
     if(!incomingrefreshToken){
@@ -253,10 +253,17 @@ try {
         "Access token refreshed"
       )
     )
-  })
+  }
   
-} catch (error) {
+catch (error) {
   throw new ApiError(400,error?.message || "Some error")
   
-}
+}})
+
+
+const changeCurrentPassword = asyncHandler(async(req,res)=>{
+  const {oldPassword,newPassword}= req.body
+})
+
+
 export { registerUser, logInUser, loggedOut,refreshAccessToken };
