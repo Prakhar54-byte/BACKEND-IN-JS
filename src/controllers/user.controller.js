@@ -41,9 +41,9 @@ const registerUser = asyncHandler(async (req, res) => {
   
   // Step 1
   const { fullName, email, password, username } = req.body;
-  console.log(req.body);
+  console.log("Request Body in Register:", req.body);
+  console.log("Request Files in Register:", email);
   
-  console.log("email cjeck register",email);
 //   console.log("Email", email);
 //   console.log(req.body);
 
@@ -122,7 +122,7 @@ const registerUser = asyncHandler(async (req, res) => {
   );
 });
 
-const logInUser = asyncHandler(async (req, res,_next) => {
+const logInUser = asyncHandler(async (req, res) => {
   // 1. Get user data
   // 2. check email and username
   // 3. check if user exist if then continue
@@ -211,4 +211,52 @@ const loggedOut = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "User logged Out"));
 });
 
-export { registerUser, logInUser, loggedOut };
+
+try {
+  const refreshAccessToken= asyncHandler(async (req,res)=>{
+    const incomingrefreshToken= req.cookie.refreshToken || req.body.refreshToken
+  
+    if(!incomingrefreshToken){
+      throw new ApiError(401,"Token is taken")
+    }
+    const decodedToken = jwt.verify(
+      incomingrefreshToken,
+      process.env.REFRESH_TOKEN_SECRET
+    )
+  
+    const user =await User.findById(decodedToken?._id)
+    if(!user){
+      throw new ApiError(401,"Invalid refresh token")
+    }
+  
+    if(incomingrefreshToken !== user?.refreshToken){
+      throw new ApiError(401,"Refresh token is expired or used")
+    }
+  
+    const options = {
+      httpOnly:true,
+      secure:true
+  
+    }
+  
+    const {accessToken,refreshToken}=await generateAccessAndRefreshToken(user._id)
+  
+  
+    return res
+    .status(200)
+    .cookie("accessToken",accessToken,options)
+    .cookie("refreshToken",refreshToken,options)
+    .json(
+      new ApiResponse(
+        200,
+        {accessToken,refreshToken:refreshToken},
+        "Access token refreshed"
+      )
+    )
+  })
+  
+} catch (error) {
+  throw new ApiError(400,error?.message || "Some error")
+  
+}
+export { registerUser, logInUser, loggedOut,refreshAccessToken };
