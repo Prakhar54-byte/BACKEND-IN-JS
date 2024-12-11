@@ -304,7 +304,6 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
 
   const avatar = await uploadOnCloudinary(avatarLocalPath);
 
-
   //TODO - delete old image from cloudinary
 
   if (!avatar.url) {
@@ -314,18 +313,17 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
   const user = await User.findByIdAndUpdate(
     req.user?._id,
     {
-      $set:{
-        avatar:avatar.url
-      }
+      $set: {
+        avatar: avatar.url,
+      },
     },
-    {new:true}
-  ).select("-password")
+    { new: true }
+  ).select("-password");
 
   return res
-  .status(200)
-  .json(new ApiResponse (200,user,"Avatar updated successfully"))
+    .status(200)
+    .json(new ApiResponse(200, user, "Avatar updated successfully"));
 });
-
 
 const updateUserCoverImage = asyncHandler(async (req, res) => {
   const coverImageLocalPath = req.file?.path;
@@ -342,19 +340,84 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
   const user = await User.findByIdAndUpdate(
     req.user?._id,
     {
-      $set:{
-        coverImage:coverImage.url
-      }
+      $set: {
+        coverImage: coverImage.url,
+      },
     },
-    {new:true}
-  ).select("-password")
+    { new: true }
+  ).select("-password");
 
-  
   return res
-  .status(200)
-  .json(new ApiResponse (200,user,"Cover Image updated successfully"))
-
+    .status(200)
+    .json(new ApiResponse(200, user, "Cover Image updated successfully"));
 });
+
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+  const { username } = req.params;
+
+  if (!username?.trim()) {
+    throw new ApiError(400, "Username is missing");
+  }
+
+  // User.find({username})
+
+  const channel = await User.aggregate([
+    {
+      $match: {
+        username: username?.toLowerCase(),
+      },
+    },
+    {
+      $lookup: {
+        from: "subscrptions",
+        localField: "_id",
+        foreignField: "channel",
+        as: "subscribers",
+      },
+    },
+    {
+      $lookup: {
+        from: "subcrptions",
+        localField: "_id",
+        foreignField: "subcriber",
+        as: "subscribedTo",
+      },
+    },
+    {
+      $addFields: {
+        subcribersCount: {
+          $size: "$subscribers",
+        },
+        channelsSubscribeToCounts: {
+          $size: "$subscribedTo",
+        },
+        isSubscribed:{
+          $cond:{
+            if:{$in: [req.user?._id,"$subscribers.subscriber"]},
+            then:true,
+            else:false
+
+          }
+        }
+      },
+    },
+    {
+      $project:{
+        fullName:1,
+        username:1,
+        subcribersCount:1,
+        channelsSubscribeToCounts:1,
+        avatar:1,
+        coverImage:1,
+        createdAt:1
+
+      }
+    }
+    
+  ]);
+  console.log("This is channel",channel);
+});
+getUserChannelProfile()
 
 export {
   registerUser,
@@ -365,5 +428,7 @@ export {
   getCurrentUser,
   updateAccountDetails,
   updateUserAvatar,
-  updateUserCoverImage
+  // updateUserCoverImage,
+  updateUserCoverImage,
+  getUserChannelProfile
 };
