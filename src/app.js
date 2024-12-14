@@ -22,6 +22,9 @@ console.log("app 3");
 app.use(cookieParser());
 console.log("app 4");
 
+// console.log(this.$__.validationError);
+
+
 
 // routes import 
 import userRouter from "./routers/user.routes.js";
