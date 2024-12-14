@@ -7,7 +7,7 @@
 
 const asyncHandler = (requestHandler) => {
     return (req, res, next) => {
-        console.log('req:', req, 'res:', res, 'next:', next); // Log the parameters
+        // console.log('req:', req, 'res:', res, 'next:', next); // Log the parameters
         if (typeof next !== 'function') {
             console.error('next is not a function');
         }
