@@ -67,8 +67,11 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
   if (!channel) {
     throw new ApiError(400, "Channel does not exist");
   }
-  let query = "";
+//   let query = "";
+  // 3. Fetch Subscribers
   const subcrptions = await Subscription.find({ channel: channelId });
+
+   // 4. Handle No Subscribers (Edge Case)
   if (subcrptions.length === 0) {
     return res
       .status(200)
@@ -88,6 +91,25 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
 // controller to return channel list to which user has subscribed
 const getSubscribedChannels = asyncHandler(async (req, res) => {
   const { subscriberId } = req.params;
+  const subcriber = await User.findById(subscriberId)
+  if(!subcriber){
+    throw new ApiError (400,"Not a subcriber")
+  }
+
+  const subscribed = await Subscription.find({ channel:subscriberId})
+
+  if (!subscribed) {
+    throw new ApiError(400,"You are noit subcribed")
+    
+  }
+
+  const subChannelId = subcribered.mpa(sub=>sub.subcrptions)
+  const subChannel = await User.find({ _id: { $in: subChannelId } })
+  return res.status(200).json(
+    new ApiResponse (200,subChannel,"List of chaeel subcrsed")
+  )
+
+
 });
 
 export { toggleSubscription, getUserChannelSubscribers, getSubscribedChannels };
