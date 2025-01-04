@@ -5,6 +5,7 @@ import {ApiError} from "../utils/ApiError.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
 import { channel, subscribe } from "diagnostics_channel"
+import { query } from "express"
 
 
 const toggleSubscription = asyncHandler(async (req, res) => {
@@ -68,8 +69,47 @@ const toggleSubscription = asyncHandler(async (req, res) => {
 
 // controller to return subscriber list of a channel
 const getUserChannelSubscribers = asyncHandler(async (req, res) => {
+    // 1.Get Channel ID from Request:
+    // 2.Check if Channel Exists:
+    // 3.Fetch Subscribers:
+    // 4.Populate Subscriber Details
+    // 5.Return Subscriber List
+    // 6.Handle Edge Cases
+
     const {channelId} = req.params
-    
+    const channel = await User.findById(channelId)
+
+    if(!channel){
+        throw new ApiError(400,
+            "Channel does not exist"
+        )
+    }
+    let query =""
+    const subcrptions = await Subscription.find({channel:channelId})
+    if(subcrptions.length === 0){
+        return res.status(200).json(
+            new ApiResponse(200, [], "No subscribers found for this channel")
+        );
+    }
+// 5. Populate Subscriber Details (from the 'subscrption' field)
+    const subscribeId = subcrptions.map((sub)=>sub.subscrption)
+    const subscribers = await User.find({ _id: { $in: subscribeId } }); // Find subscribers
+
+
+    return res 
+    .status(200)
+    .json(
+        new ApiResponse(
+            200,
+           subscribers,
+           "List of subscribers for the channel"
+        )
+    )
+
+
+
+
+
 })
 
 // controller to return channel list to which user has subscribed
