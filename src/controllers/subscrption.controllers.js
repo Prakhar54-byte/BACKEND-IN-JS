@@ -67,11 +67,11 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
   if (!channel) {
     throw new ApiError(400, "Channel does not exist");
   }
-//   let query = "";
+  //   let query = "";
   // 3. Fetch Subscribers
   const subcrptions = await Subscription.find({ channel: channelId });
 
-   // 4. Handle No Subscribers (Edge Case)
+  // 4. Handle No Subscribers (Edge Case)
   if (subcrptions.length === 0) {
     return res
       .status(200)
@@ -91,25 +91,32 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
 // controller to return channel list to which user has subscribed
 const getSubscribedChannels = asyncHandler(async (req, res) => {
   const { subscriberId } = req.params;
-  const subcriber = await User.findById(subscriberId)
-  if(!subcriber){
-    throw new ApiError (400,"Not a subcriber")
+
+  // 1. Check if the subscriber exists
+  const subscriber = await User.findById(subscriberId);
+  if (!subscriber) {
+    throw new ApiError(400, "Not a valid subscriber");
   }
 
-  const subscribed = await Subscription.find({ channel:subscriberId})
+  // 2. Fetch subscriptions where the subscriber is the user
+  const subscribed = await Subscription.find({ subscrption: subscriberId });
 
-  if (!subscribed) {
-    throw new ApiError(400,"You are noit subcribed")
-    
+  // 3. Check if the user has any subscriptions
+  if (subscribed.length === 0) {
+    throw new ApiError(400, "You are not subscribed to any channels");
   }
 
-  const subChannelId = subcribered.mpa(sub=>sub.subcrptions)
-  const subChannel = await User.find({ _id: { $in: subChannelId } })
-  return res.status(200).json(
-    new ApiResponse (200,subChannel,"List of chaeel subcrsed")
-  )
+  // 4. Extract the channel IDs from the subscriptions
+  const subscribedChannelIds = subscribed.map((sub) => sub.channel);
 
+  // 5. Fetch the channels the user has subscribed to
+  const subscribedChannels = await User.find({ _id: { $in: subscribedChannelIds } });
 
+  // 6. Return the list of subscribed channels
+  return res
+    .status(200)
+    .json(new ApiResponse(200, subscribedChannels, "List of channels subscribed to"));
 });
+
 
 export { toggleSubscription, getUserChannelSubscribers, getSubscribedChannels };
