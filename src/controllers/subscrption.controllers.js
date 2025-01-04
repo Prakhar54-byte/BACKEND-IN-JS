@@ -104,6 +104,7 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
   // 3. Check if the user has any subscriptions
   if (subscribed.length === 0) {
     throw new ApiError(400, "You are not subscribed to any channels");
+    
   }
 
   // 4. Extract the channel IDs from the subscriptions
