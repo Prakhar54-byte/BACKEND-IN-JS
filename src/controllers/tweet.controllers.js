@@ -121,6 +121,31 @@ const updateTweet = asyncHandler(async (req, res) => {
 
 const deleteTweet = asyncHandler(async (req, res) => {
     //TODO: delete tweet
+    const { twwetId } = req.params
+    if(!isValidObjectId(twwetId)){
+        throw new ApiError(400,"Tweet ID is not found ")
+    }
+
+    const tweet = await Tweet.findByIdAndDelete(
+        {
+            _id: tweetId,
+            owner:req.user._id
+        }
+    )
+
+    if(!tweet){
+        throw new ApiError(400,"Tweet not found or you're not the owner")
+    }
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(
+            200,
+            {},
+            "Tweet deleted successfully"
+        )
+    )
 })
 
 export {
