@@ -117,32 +117,66 @@ const getPlaylistById = asyncHandler(async (req, res) => {
     )
   }
 
+//   const playlist = await Playlist.aggregate([
+//     {
+//         $match:{
+//             owner:mongoose.Types.ObjectId(playlistId)
+//         }
+//     },{
+//         $lookup:{
+//             from:"playlists",
+//             localField:"playlist",
+//             foreignField:"_id",
+//             as:"owner",
+
+//         }
+//     },
+//     {
+//         $unwind:"$owner"
+//     },
+//     {
+//         $project:{
+//             name:1,
+//             description:1,
+//             video:1,
+//             owner:1,
+//         }
+//     }
+//   ])
+
+
   const playlist = await Playlist.aggregate([
     {
-        $match:{
-            owner:mongoose.Types.ObjectId(playlistId)
-        }
-    },{
-        $lookup:{
-            from:"playlists",
-            localField:"playlist",
-            foreignField:"_id",
-            as:"owner",
-
-        }
+      $match: { _id: mongoose.Types.ObjectId(playlistId) },
     },
     {
-        $unwind:"$owner"
+      $lookup: {
+        from: "users", 
+        localField: "owner",
+        foreignField: "_id",
+        as: "ownerDetails",
+      },
     },
     {
-        $project:{
-            name:1,
-            description:1,
-            video:1,
-            owner:1,
-        }
-    }
-  ])
+      $unwind: { path: "$ownerDetails", preserveNullAndEmptyArrays: true },
+    },
+    {
+      $lookup: {
+        from: "videos", 
+        localField: "videos",
+        foreignField: "_id",
+        as: "videoDetails",
+      },
+    },
+    {
+      $project: {
+        name: 1,
+        description: 1,
+        ownerDetails: { username: 1, email: 1 }, 
+        videoDetails: { title: 1, url: 1 }, 
+      },
+    },
+  ]);
 
   return res
   .status(200)
