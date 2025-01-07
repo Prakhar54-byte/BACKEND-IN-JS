@@ -266,7 +266,46 @@ const updatePlaylist = asyncHandler(async (req, res) => {
   const { playlistId } = req.params;
   const { name, description } = req.body;
   //TODO: update playlist
+
+  if(!playlistId || mongoose.Types.isValidObjectId(playlistId)){
+    throw new ApiError(400,"Playlist do not exist to update")
+  }
+
+  if(!name || !description){
+    throw new ApiError(400,"Playlist name and description is do not exist to update")
+  }
+
+  const playlist = await Playlist.findByIdAndUpdate(
+    {
+    _id:playlistId,
+    owner:req.user._id
+  },
+    {
+      $set:{
+        name,description
+      }
+    },
+    {
+      new : true
+    }
+)
+
+    if(!playlist){
+      throw new ApiError(400,"Playlist not updated or you are not owner")
+    }
+
+    return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        playlist,
+        "Playlist updated successfully"
+      )
+    )
 });
+
+
 
 createPlaylist();
 
