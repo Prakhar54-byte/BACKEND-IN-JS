@@ -202,6 +202,40 @@ const addVideoToPlaylist = asyncHandler(async (req, res) => {
 const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
   const { playlistId, videoId } = req.params;
   // TODO: remove video from playlist
+  if(!playlistId || !videoId || !mongoose.Types.ObjectId.isValid(playlistId) || 
+  !mongoose.Types.ObjectId.isValid(videoId)) {
+    throw new ApiError(400,"PLaylist Id or Video Id is wrong")
+  }
+  const playlist = await Playlist.findByIdAndDelete(
+    playlistId,
+    {
+      $pull:{
+        videos:videoId
+      }
+    }
+  )
+
+
+
+
+  if (playlist.videos.includes(videoId) === "") {
+    throw new ApiError(400, "Playlist is already empty");
+  }
+
+
+    return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        playlist,
+        "Video removed from playlist"
+      )
+    )
+ 
+
+
+
 });
 
 const deletePlaylist = asyncHandler(async (req, res) => {
