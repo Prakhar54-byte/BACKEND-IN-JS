@@ -117,32 +117,7 @@ const getPlaylistById = asyncHandler(async (req, res) => {
     )
   }
 
-//   const playlist = await Playlist.aggregate([
-//     {
-//         $match:{
-//             owner:mongoose.Types.ObjectId(playlistId)
-//         }
-//     },{
-//         $lookup:{
-//             from:"playlists",
-//             localField:"playlist",
-//             foreignField:"_id",
-//             as:"owner",
 
-//         }
-//     },
-//     {
-//         $unwind:"$owner"
-//     },
-//     {
-//         $project:{
-//             name:1,
-//             description:1,
-//             video:1,
-//             owner:1,
-//         }
-//     }
-//   ])
 
 
   const playlist = await Playlist.aggregate([
@@ -194,14 +169,33 @@ const getPlaylistById = asyncHandler(async (req, res) => {
 
 const addVideoToPlaylist = asyncHandler(async (req, res) => {
   const { playlistId, videoId } = req.params;
-  if(!playlistId || !videoId) {
+  if(!playlistId || !videoId || !mongoose.Types.ObjectId.isValid(playlistId) || 
+  !mongoose.Types.ObjectId.isValid(videoId)) {
     throw new ApiError(400,"PLaylist Id or Video Id is wrong")
   }
-  const video = await Playlist.findByIdAndUpdate(
-    {
-      _id:videoId,
-      owner:req.user.id
-    }
+  const playlist = await Playlist.findById(playlistId)
+
+
+
+  // Check if the video is already in the playlist
+
+  if (playlist.videos.includes(videoId)) {
+    throw new ApiError(400, "Video already exists in the playlist");
+  }
+
+
+  playlist.videos.push(videoId)
+
+  await playlist.save()
+
+  return res
+  .status(200)
+  .json(
+    new ApiResponse(
+      200,
+      playlist,
+      "Video is added in playlist successfully"
+    )
   )
 });
 
