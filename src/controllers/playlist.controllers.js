@@ -194,6 +194,15 @@ const getPlaylistById = asyncHandler(async (req, res) => {
 
 const addVideoToPlaylist = asyncHandler(async (req, res) => {
   const { playlistId, videoId } = req.params;
+  if(!playlistId || !videoId) {
+    throw new ApiError(400,"PLaylist Id or Video Id is wrong")
+  }
+  const video = await Playlist.findByIdAndUpdate(
+    {
+      _id:videoId,
+      owner:req.user.id
+    }
+  )
 });
 
 const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
