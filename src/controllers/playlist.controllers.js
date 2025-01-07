@@ -65,7 +65,7 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
         from: "playlists",
         localField: "owner",
         foreignField: "_id",
-        as: "userplaylist",
+        as: "owner",
         pipeline: {
           $project: {
             name: 1,
@@ -110,6 +110,52 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
 const getPlaylistById = asyncHandler(async (req, res) => {
   const { playlistId } = req.params;
   //TODO: get playlist by id
+  if(!playlistId || !mongoose.Types.ObjectId(playlistId)){
+    throw new ApiError(
+        400,
+        "PLaylist ID is invalid"
+    )
+  }
+
+  const playlist = await Playlist.aggregate([
+    {
+        $match:{
+            owner:mongoose.Types.ObjectId(playlistId)
+        }
+    },{
+        $lookup:{
+            from:"playlists",
+            localField:"playlist",
+            foreignField:"_id",
+            as:"owner",
+
+        }
+    },
+    {
+        $unwind:"$owner"
+    },
+    {
+        $project:{
+            name:1,
+            description:1,
+            video:1,
+            owner:1,
+        }
+    }
+  ])
+
+  return res
+  .status(200)
+  .json(
+    new ApiResponse(
+        200,
+        playlist,
+        "Playlist by id fetched"
+    )
+  )
+
+
+
 });
 
 const addVideoToPlaylist = asyncHandler(async (req, res) => {
