@@ -1,98 +1,145 @@
-import mongoose, {isValidObjectId} from "mongoose"
-import {Playlist} from "../models/playlist.models.js"
-import {ApiError} from "../utils/ApiError.js"
-import {ApiResponse} from "../utils/ApiResponse.js"
-import {asyncHandler} from "../utils/asyncHandler.js"
-import { User } from "../models/user.model.js"
-
+import mongoose, { isValidObjectId } from "mongoose";
+import { Playlist } from "../models/playlist.models.js";
+import { ApiError } from "../utils/ApiError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
+import { User } from "../models/user.model.js";
 
 const createPlaylist = asyncHandler(async (req, res) => {
-    const {name, description , videoId} = req.body
+  const { name, description, videoId } = req.body;
 
-    //TODO: create playlist
-    if(!name || name.trim()===""){
-        throw new ApiError(400,"Playlist name not found")
-    }
+  //TODO: create playlist
+  if (!name || name.trim() === "") {
+    throw new ApiError(400, "Playlist name not found");
+  }
 
-    const {userId} = req.params
+  const { userId } = req.params;
 
-    const user  = await User.findById(userId)
+  const user = await User.findById(userId);
 
-    if(!user){
-        throw new ApiError(400,"User not found")
-    }
-    let video = []
+  if (!user) {
+    throw new ApiError(400, "User not found");
+  }
+  let video = [];
 
-    if(videoId && Array.isArray(videoId)){
-        video = await VideoColorSpace.find({_id:
-            {
-                $in:videoId
-            }
-        })
-    }
+  if (videoId && Array.isArray(videoId)) {
+    video = await VideoColorSpace.find({
+      _id: {
+        $in: videoId,
+      },
+    });
+  }
 
-        const playlist = new Playlist({
-            name,
-            description,
-            user:userId,
-            videos:video.map((video)=>video._id)
-        })
+  const playlist = new Playlist({
+    name,
+    description,
+    user: userId,
+    videos: video.map((video) => video._id),
+  });
 
-        await playlist.save()
-    
-        return res
-        .status(200)
-        .json(
-            new ApiResponse(
-                200,
-                playlist,
-                "Playlist created"
-            )
-        )
+  await playlist.save();
 
-    
-    // console.log(name," SO this is name");
-})
+  return res
+    .status(200)
+    .json(new ApiResponse(200, playlist, "Playlist created"));
+
+  // console.log(name," SO this is name");
+});
 
 const getUserPlaylists = asyncHandler(async (req, res) => {
-    const {userId} = req.params
-    //TODO: get user playlists
-})
+  const { userId } = req.params;
+  //TODO: get user playlists
+
+  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+    throw new ApiError(400, "User not found ad cannot get playlist");
+  }
+
+  const user_playlist = await Playlist.aggregate([
+    {
+      $match: {
+        owner: mongoose.Types.ObjectId(userId),
+      },
+    },
+    {
+      $lookup: {
+        from: "playlists",
+        localField: "owner",
+        foreignField: "_id",
+        as: "userplaylist",
+        pipeline: {
+          $project: {
+            name: 1,
+            description: 1,
+            video: 1,
+          },
+        },
+      },
+    },
+  ]);
+
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const skip = (page - 1) * limit;
+
+//   const userPlaylists = await Playlist.aggregate([
+//     { $match: { owner: mongoose.Types.ObjectId(userId) } },
+//     { $project: { name: 1, description: 1, videos: 1 } },
+//     { $skip: skip },
+//     { $limit: limit },
+//   ]);
+
+  const totalPlaylists = await Playlist.countDocuments({ owner: userId });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        // playlists: userPlaylists,
+        playlists: user_playlist,
+        total: totalPlaylists,
+        page,
+        limit,
+      },
+      "User playlists fetched successfully"
+    )
+  );
+
+ 
+});
 
 const getPlaylistById = asyncHandler(async (req, res) => {
-    const {playlistId} = req.params
-    //TODO: get playlist by id
-})
+  const { playlistId } = req.params;
+  //TODO: get playlist by id
+});
 
 const addVideoToPlaylist = asyncHandler(async (req, res) => {
-    const {playlistId, videoId} = req.params
-})
+  const { playlistId, videoId } = req.params;
+});
 
 const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
-    const {playlistId, videoId} = req.params
-    // TODO: remove video from playlist
-
-})
+  const { playlistId, videoId } = req.params;
+  // TODO: remove video from playlist
+});
 
 const deletePlaylist = asyncHandler(async (req, res) => {
-    const {playlistId} = req.params
-    // TODO: delete playlist
-})
+  const { playlistId } = req.params;
+  // TODO: delete playlist
+});
 
 const updatePlaylist = asyncHandler(async (req, res) => {
-    const {playlistId} = req.params
-    const {name, description} = req.body
-    //TODO: update playlist
-})
+  const { playlistId } = req.params;
+  const { name, description } = req.body;
+  //TODO: update playlist
+});
 
-createPlaylist()
+createPlaylist();
 
 export {
-    createPlaylist,
-    getUserPlaylists,
-    getPlaylistById,
-    addVideoToPlaylist,
-    removeVideoFromPlaylist,
-    deletePlaylist,
-    updatePlaylist
-}
+  createPlaylist,
+  getUserPlaylists,
+  getPlaylistById,
+  addVideoToPlaylist,
+  removeVideoFromPlaylist,
+  deletePlaylist,
+  updatePlaylist,
+};
