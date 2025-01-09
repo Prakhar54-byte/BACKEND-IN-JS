@@ -124,6 +124,50 @@ const toggleTweetLike = asyncHandler(async (req, res) => {
 
 const getLikedVideos = asyncHandler(async (req, res) => {
   //TODO: get all liked videos
+try {
+    const { likesId } = req.params
+    if(!likesId || !mongoose.Types.isValidObjectId(likesId)){
+      throw new ApiError(400,"")
+    }
+  
+    const likes = await Like.aggregate([
+      {
+        $match:{
+          _id:mongoose.Types.ObjectId(likesId)
+        }
+      },
+      {
+        $lookup:{
+          from:"users",
+          localField:"owner",
+          foreignField: "_id",
+          as: "ownerDetails",
+        },
+        
+      },{
+        $unwind: { path: "$ownerDetails", preserveNullAndEmptyArrays: true },
+      },{
+        $project:{
+          name: 1,
+          description: 1,
+          ownerDetails: { username: 1, email: 1 }, 
+          videoDetails: { title: 1, url: 1 }, 
+        },
+      }
+    ])
+  
+  
+    return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,{likes},
+        "All likes video fetched successfully"
+      )
+    )
+} catch (error) {
+  throw new ApiError(400,error?.message || "Some error in getLikedVideos")
+}
 });
 
 export { toggleCommentLike, toggleTweetLike, toggleVideoLike, getLikedVideos };
