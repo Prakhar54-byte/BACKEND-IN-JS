@@ -48,8 +48,40 @@ const toggleVideoLike = asyncHandler(async (req, res) => {
 })
 
 const toggleCommentLike = asyncHandler(async (req, res) => {
-    const {commentId} = req.params
-    //TODO: toggle like on comment
+  try {
+      const {commentId} = req.params
+      //TODO: toggle like on comment
+      if(!commentId || !mongoose.Types.isValidObjectId(commentId)){
+          throw new ApiError(400,"Comment Id does not exit to like comment")
+      }
+      const existingLike = await Like.findOne({
+          comment:commentId,
+          likedBy:req.user._id
+      })
+      let liked ; 
+      if(existingLike){
+          await existingLike.remove()
+          liked = false
+      }else{
+          const newLike = await Like.create({
+              comment:commentId,
+              likedBy:req.user._id
+          })
+          liked = true
+      }
+  
+      return res
+      .status(200)
+      .json(
+          new ApiResponse(
+              200,
+              {commentId,likedBy},
+              "Like toggled in comment by user successfully"
+          )
+      )
+  } catch (error) {
+    throw new ApiError(400,error?.message || "Some error in toggleCommentLike")
+  }
 
 })
 
