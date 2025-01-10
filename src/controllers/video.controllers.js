@@ -5,6 +5,7 @@ import {ApiError} from "../utils/ApiError.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
 import {uploadOnCloudinary} from "../utils/cloudinary.js"
+import Joi from 'joi';
 
 
 const getAllVideos = asyncHandler(async (req, res) => {
@@ -16,6 +17,63 @@ const getAllVideos = asyncHandler(async (req, res) => {
 const publishAVideo = asyncHandler(async (req, res) => {
     const { title, description} = req.body
     // TODO: get video, upload to cloudinary, create video
+    if(!title || !description){
+        throw new ApiError(400,"Something  went wrong in title or description to publish ")
+    }
+
+
+
+const videoValidationSchema = Joi.object({
+  title: Joi.string().required(),
+  description: Joi.string().required(),
+  videoFile: Joi.string().required(), // Assuming Cloudinary URL
+  thumbnail: Joi.string().required(),
+  duration: Joi.number().required(),
+});
+
+const validateVideoPayload = (payload) => {
+  const { error } = videoValidationSchema.validate(payload);
+  if (error) throw new ApiError(400, error.details[0].message);
+};
+
+
+    
+    const videos =  await Video.findOne(
+        {
+            title:title,
+            description:description
+        }
+    )
+
+    if(!videos){
+        const newVideo = await Video.create({
+            title,
+            description,
+            videoFiles: uploadedVideo.secure_url,
+            thumbnail: uploadedThumbnail.secure_url,
+            duration: req.body.duration,
+            owner: req.user._id,
+            views: 0,
+            isPublished: true,
+          });
+          
+        await uploadOnCloudinary(newVideo.videoFiles)
+    }else{
+       
+        await uploadOnCloudinary(videos.videoFiles)
+    }
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(
+            200,
+            {videos,newVideo},
+            "Video publish"
+        )
+    )
+
+
 })
 
 const getVideoById = asyncHandler(async (req, res) => {
