@@ -81,8 +81,52 @@ const publishAVideo = asyncHandler(async (req, res) => {
 })
 
 const getVideoById = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
-    //TODO: get video by id
+   try {
+     const { videoId } = req.params
+     //TODO: get video by id
+     if(!videoId || mongoose.Types.isValidObjectId(videoId)){
+         throw new ApiError(400,"Video Id is incorrect to get video")
+     }
+ 
+     const videos = await Video.aggregate([
+         {
+             $match: {
+                 _id: mongoose.Types.ObjectId(videoId)
+             }
+         },
+         {
+             $lookup: {
+                 from: "users", // Collection name for owners (e.g., users)
+                 localField: "owner", // Field in the video document
+                 foreignField: "_id", // Field in the user document
+                 as: "ownerDetails"
+             }
+         },
+         {
+             $unwind: "$ownerDetails" // Unwind the owner details if it's an array
+         },
+         {
+             $project: {
+                 _id: 1,
+                 title: 1,
+                 description: 1,
+                 "ownerDetails.name": 1, // Example: Include owner name
+                 "ownerDetails.email": 1 // Example: Include owner email
+             }
+         }
+     ]);
+     return res
+     .status(200)
+     .json(
+         new ApiResponse(
+             200,
+             {videoId,videos},
+             "All videos get"
+         )
+     )
+   } catch (e) {
+    throw new ApiError(400,e?.message || "Some error in getVideoById")
+   }
 })
 
 const updateVideo = asyncHandler(async (req, res) => {
