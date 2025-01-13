@@ -133,6 +133,34 @@ const getVideoById = asyncHandler(async (req, res) => {
 const updateVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params
     //TODO: update video details like title, description, thumbnail
+    if(!videoId || mongoose.Types.isValidObjectId(videoId)){
+        throw new ApiError(400,"Video Id is incorrect to update video")
+    }
+
+    const { title, description, thumbnail } = req.body;
+    const updatedVideo = await Video.findOneAndUpdate(
+        {
+            _id: videoId
+        },
+        {
+            title,
+            description,
+            thumbnail
+        },
+        {
+            new: true
+        }
+    );
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(
+            200,
+            {videoId,updatedVideo},
+            "Video updated"
+        )
+    )
 
 
 })
