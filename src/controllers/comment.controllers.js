@@ -54,7 +54,33 @@ const getVideoComments = asyncHandler(async (req, res) => {
 })
 
 const addComment = asyncHandler(async (req, res) => {
-    // TODO: add a comment to a video
+  try {
+      // TODO: add a comment to a video
+      const { videoId,userId } = req.params
+      const {content} = req.body
+      if(!videoId || !mongoose.isValidObjectId(videoId)){
+          throw new ApiError(400, "Video Id is incorrect to add a comment")
+      }
+      if(!userId || !mongoose.isValidObjectId(userId)){
+          throw new ApiError(400, "User Id is incorrect to add a comment")
+      }
+      if(!content){
+          throw new ApiError(400, "Content is required to add a comment")
+      }
+  
+      const comment = new Comment([
+          {
+              content,
+              video: videoId,
+              owner: userId
+          }
+      ])
+      await comment.save()
+      return res.status(201).json(new ApiResponse(201, {videoId, comment}, "Comment added successfully"))
+  } catch (error) {
+      throw new ApiError(400, error?.message || "Some error in addComment")
+    
+  }
 })
 
 const updateComment = asyncHandler(async (req, res) => {
