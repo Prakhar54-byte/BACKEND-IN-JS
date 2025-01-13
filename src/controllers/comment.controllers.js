@@ -85,6 +85,7 @@ const addComment = asyncHandler(async (req, res) => {
 
 const updateComment = asyncHandler(async (req, res) => {
     // TODO: update a comment
+    
 })
 
 const deleteComment = asyncHandler(async (req, res) => {
