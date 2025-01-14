@@ -84,33 +84,38 @@ const addComment = asyncHandler(async (req, res) => {
 })
 
 const updateComment = asyncHandler(async (req, res) => {
-    // TODO: update a comment
-    const { commentId } = req.params
-    const { userId } = req.body
-    const { content } = req.body
-    if (!commentId || !mongoose.isValidObjectId(commentId)) {
-        throw new ApiError(400, "Comment Id is incorrect to update a comment")
-    }
-    if (!userId || !mongoose.isValidObjectId(userId)) {
-        throw new ApiError(400, "User Id is incorrect to update a comment")
-    }
-    if (!content) {
-        throw new ApiError(400, "Content is required to update a comment")
-    }
-
-    const comment = await Comment.findOneAndUpdate(
-        {
-            _id: commentId,
-            owner: userId
-        },
-        {
-            content
-        },
-        {
-            new: true
-        }
-    )
-    return res.status(200).json(new ApiResponse(200, { commentId, comment }, "Comment updated successfully"))
+   try {
+     // TODO: update a comment
+     const { commentId } = req.params
+     const { userId } = req.body
+     const { content } = req.body
+     if (!commentId || !mongoose.isValidObjectId(commentId)) {
+         throw new ApiError(400, "Comment Id is incorrect to update a comment")
+     }
+     if (!userId || !mongoose.isValidObjectId(userId)) {
+         throw new ApiError(400, "User Id is incorrect to update a comment")
+     }
+     if (!content) {
+         throw new ApiError(400, "Content is required to update a comment")
+     }
+ 
+     const comment = await Comment.findOneAndUpdate(
+         {
+             _id: commentId,
+             owner: userId
+         },
+         {
+             content
+         },
+         {
+             new: true
+         }
+     )
+     return res.status(200).json(new ApiResponse(200, { commentId, comment }, "Comment updated successfully"))
+   } catch (error) {
+       throw new ApiError(400, error?.message || "Some error in updateComment")
+    
+   }
 
 })
 
