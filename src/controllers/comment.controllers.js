@@ -115,27 +115,32 @@ const updateComment = asyncHandler(async (req, res) => {
 })
 
 const deleteComment = asyncHandler(async (req, res) => {
-    // TODO: delete a comment
-    const { commentId } = req.params
-    const { userId } = req.body
-
-    if (!commentId || !mongoose.isValidObjectId(commentId)) {
-        throw new ApiError(400, "Comment Id is incorrect to delete a comment")
-    }
-    if (!userId || !mongoose.isValidObjectId(userId)) {
-        throw new ApiError(400, "User Id is incorrect to delete a comment")
-    }
-    const comment = await Comment.findOneAndDelete({
-        _id: commentId,
-        owner: userId
-    })
-    if(!comment){
-        throw new ApiError(404, "Comment not found to delete")
-    }
-
-    return res
-    .status(200)
-    .json(new ApiResponse(200, { commentId, comment }, "Comment deleted successfully"))
+   try {
+     // TODO: delete a comment
+     const { commentId } = req.params
+     const { userId } = req.body
+ 
+     if (!commentId || !mongoose.isValidObjectId(commentId)) {
+         throw new ApiError(400, "Comment Id is incorrect to delete a comment")
+     }
+     if (!userId || !mongoose.isValidObjectId(userId)) {
+         throw new ApiError(400, "User Id is incorrect to delete a comment")
+     }
+     const comment = await Comment.findOneAndDelete({
+         _id: commentId,
+         owner: userId
+     })
+     if(!comment){
+         throw new ApiError(404, "Comment not found to delete")
+     }
+ 
+     return res
+     .status(200)
+     .json(new ApiResponse(200, { commentId, comment }, "Comment deleted successfully"))
+   } catch (error) {
+       throw new ApiError(400, error?.message || "Some error in deleteComment")
+    
+   }
 })
 
 export {
