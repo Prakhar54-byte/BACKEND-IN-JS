@@ -27,6 +27,6 @@ connectDB()
     })
 })
 .catch((e)=>{
-console.log("MONOGODB CONNECTION FAILED !!!!!",e);
+console.log("MONGODB CONNECTION FAILED !!!!!",e);
     
 })
