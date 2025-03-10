@@ -11,9 +11,16 @@ const toggleSubscription = asyncHandler(async (req, res) => {
   const { channelId } = req.params;
   // TODO: toggle subscription
   // 1. User exist  by user id
-  // 2.
+  // 2. Channel exist by channel id
+  // 3. Check if user is already subscribed to the channel
+  // 4. If subscribed, then remove the subscription
+  // 5. If not subscribed, then add the subscription
+
+
+
 
   const userId = req.user.id;
+  caches.log(userId);
 
   const user = await User.findById(userId);
   if (!user) {
