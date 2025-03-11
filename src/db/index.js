@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { DB_NAME } from "../constants.js";
+import { DB_NAME } from "BACKEND/src/constants.js";
 
 const connectDB = async () => {
     try {
@@ -10,7 +10,7 @@ const connectDB = async () => {
         // debugger;
 
     } catch (error) {
-        console.log("MONGODB connection FAILED ", error);
+        console.log("MONGODB connection FAILED !!! index", error);
         process.exit(1);
         
     }
