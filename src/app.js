@@ -2,46 +2,37 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
+const app = express();
 
-const app= express();
-
-
+// Set up CORS
 app.use(cors({
-    origin: process.env.CORS_ORIGIN,
-credentials: true, 
-allowedHeaders:true}
-))
+    origin: process.env.CORS_ORIGIN || "http://localhost:3000",  // Ensure CORS Origin is correct
+    credentials: true, 
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE']
+}));
 
-app.use(express.urlencoded({extended: true,limit: "16kb"}));
-console.log("app 1");
+// Increase body size limit to 10MB
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "10mb" }));
 
-app.use(express.json({limit: "16kb "}));
-console.log("app 2");
-app.use(express.static('public'));//Pdf files it will be stored in Public folder
-console.log("app 3");
+console.log("Body size limit set to 10mb");
+
+// Serve static files from the 'public' folder
+app.use(express.static('public'));
+console.log("Static files served from the 'public' folder");
+
+// Set up cookie parser
 app.use(cookieParser());
-console.log("app 4");
+console.log("Cookie parser middleware added");
 
-// console.log(this.$__.validationError);
-
-
-
-// routes import 
+// Import user routes
 import userRouter from "./routers/user.routes.js";
 
-
-
-
-//routes declaration 
-// app.get()// we use app.get() to get the data from the server
+// Use routes
 app.use("/api/v1/users", userRouter);
 
+console.log("App is running on port 8000");
 
-
-
-
-//  https://localhost:8000//api/v1/users/register
-console.log("app.js is running");
-
-
-export  {app};
+// Export app for server initialization
+export { app };
