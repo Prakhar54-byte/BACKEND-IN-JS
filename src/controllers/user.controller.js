@@ -127,7 +127,7 @@ const logInUser = asyncHandler(async (req, res) => {
   // 4. acess and refresh token
   // 5. senf tokens in form of cokkies
 
-  const { fullName, email, password, username } = req.body;
+  const {  email, password, username } = req.body;
   console.log(req.body);
 
   console.log(email);

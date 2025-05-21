@@ -10,7 +10,11 @@ import {app} from './app.js'
 dotenv.config({ path:"../.env"});
 
 
-
+const PORT = process.env.PORT || 8080;
+app.listen(PORT,()=>{
+    console.log(`SERVER is running at port ${PORT}`);
+    console.log(`MONGO DB IS CONNECTED TO ${DB_NAME}`);
+})
 
 
 
