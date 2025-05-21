@@ -32,7 +32,7 @@ import userRouter from "./routers/user.routes.js";
 // Use routes
 app.use("/api/v1/users", userRouter);
 
-console.log("App is running on port 8000");
+console.log(`App is running on port ${process.env.PORT || 8080}  `);
 
 // Export app for server initialization
 export { app };
