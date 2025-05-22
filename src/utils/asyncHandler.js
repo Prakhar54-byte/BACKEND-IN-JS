@@ -1,13 +1,6 @@
-// const asyncHandler = (requestHandler) => {
-//     return (req, res, next) => {
-//         console.log('req:', req, 'res:', res, 'next:', next); // Log the parameters
-//         Promise.resolve(requestHandler(req, res, next)).catch((err) => next(err));
-//     };
-// };
-
 const asyncHandler = (requestHandler) => {
     return (req, res, next) => {
-        Promise.resolve(requestHandler(req, res, next)).catch((err) => (err))
+        Promise.resolve(requestHandler(req, res, next)).catch((err) => next(err))
     }
 }
 
@@ -16,24 +9,19 @@ export { asyncHandler }
 
 
 
-// const asyncHandler= (fn) => async(req , res ,next) => {
 
+// const asyncHandler = () => {}
+// const asyncHandler = (func) => () => {}
+// const asyncHandler = (func) => async () => {}
+
+
+// const asyncHandler = (fn) => async (req, res, next) => {
 //     try {
-//         await fn(req, res,next);
-
+//         await fn(req, res, next)
 //     } catch (error) {
-//         res.status(error.status || 500).json({
+//         res.status(err.code || 500).json({
 //             success: false,
-//             message: error.message || 'Internal Server Error'
-
-//     });
-// }  
-/*
-Higher-Order Function: asyncHandler is a function that takes another function fn as an argument.
-Parameters and Return Value:(fn) => {}: This part defines a function that takes fn as a parameter.
-() => {}: This part defines a function that takes no parameters and has an empty body.
-
-
-*/
-
-
+//             message: err.message
+//         })
+//     }
+// }

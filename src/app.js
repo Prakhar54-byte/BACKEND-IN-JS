@@ -12,9 +12,17 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
 
-// Increase body size limit to 10MB
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use(express.json({ limit: "10mb" }));
+app.get("/ping", (req, res) => {
+  console.log("Ping route hit");
+  res.json({ message: "pong" });
+});
+
+// // Increase body size limit to 10MB
+// app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+// app.use(express.json({ limit: "10mb" }));
+
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
 console.log("Body size limit set to 10mb");
 

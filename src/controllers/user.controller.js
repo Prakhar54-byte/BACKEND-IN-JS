@@ -5,6 +5,7 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+// import log from "video.js/dist/types/utils/log.js";
 
 const generateAccessAndRefreshToken = async (userId) => {
   try {
@@ -42,11 +43,18 @@ const registerUser = asyncHandler(async (req, res) => {
 
     // Step 1
     const { fullName, email, password, username } = req.body;
-    console.log("Request Body in Register:", req.body);
-    console.log("Request Files in Register:", email);
+    // console.log("Request Body in Register:", req.body);
+    console.log("All Keys in req.body:", Object.keys(req.body));
+    // console.log("Request Files in Register:", req.files);
 
-    //   console.log("Email", email);
-    //   console.log(req.body);
+    
+    
+
+
+    // console.log("Request Files in Register:", email);
+
+      console.log("Email", email);
+      console.log(req.body);
 
     //Step 2
     if (fullName === "") {
@@ -85,15 +93,26 @@ const registerUser = asyncHandler(async (req, res) => {
     if (!avatarlocalPath) {
       throw new ApiError(400, "Avatar is required");
     }
+    console.log("Cover Image path:", coverImageLocalPath);
+    
     // Step5
     const avatar = await uploadOnCloudinary(avatarlocalPath);
+    // console.log("Avatar URL:", avatar);
+    
     const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+    // console.log("Cover Image :", coverImageLocalPath);
+    
+    // console.log("Cover Image URL:", coverImage);
 
     if (!avatar || !coverImage) {
       throw new ApiError(500, "Cloudinary Error");
     }
 
     // Step 6
+
+    // console.log("Avatar URL:", avatar.url);
+    // console.log("Cover Image URL:", coverImage?.url);
+    
 
     const user = await User.create({
       fullName,
@@ -131,6 +150,8 @@ const logInUser = asyncHandler(async (req, res) => {
   console.log(req.body);
 
   console.log(email);
+
+  
 
   if (!username) {
     throw new ApiError(400, "username is required");
