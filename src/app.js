@@ -42,5 +42,30 @@ app.use("/api/v1/users", userRouter);
 
 console.log(`App is running on port ${process.env.PORT || 8080}  `);
 
+
+import { User } from './models/user.model.js';
+
+const createTestUser = async () =>{
+  const user = new User({
+    username: "testuser",
+    email: "trwe@gmail.com",
+    fullName: "Test User",
+    password: "testpassword",
+    avatar:"https://example.com/avatar.png",
+  })
+
+  await user.save()
+  console.log("Test user created:", user);
+  
+}
+
+// createTestUser()
+
+
+
+
+
 // Export app for server initialization
 export { app };
+
+
