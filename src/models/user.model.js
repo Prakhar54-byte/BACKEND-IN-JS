@@ -19,7 +19,8 @@ import bcrypt from "bcrypt";
             },
             email: {
                 type: String,
-                required: true
+                required: true,
+                lowercase: true,
             },
             fullName: {
                 type: String,
@@ -66,7 +67,7 @@ userSchema.methods.isPasswordCorrect = async function(password){
 }
 
 
-userSchema.methods.generrateAccessToken= function(){
+userSchema.methods.generateAccessToken= function(){
     return jwt.sign(
         {
             _id: this._id,
@@ -76,11 +77,11 @@ userSchema.methods.generrateAccessToken= function(){
         },
         process.env.ACCESS_TOKEN_SECRET,
         {
-            expiresIn: process.env.ACCESS_TOKEN_EXPIRY
+            expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN
         }
     )
 }
-userSchema.methods.generrateRefreshToken= function(){
+userSchema.methods.generateRefreshToken= function(){
     return jwt.sign(
         {
             _id: this._id,
@@ -88,7 +89,7 @@ userSchema.methods.generrateRefreshToken= function(){
         },
         process.env.REFRESH_TOKEN_SECRET,
         {
-            expiresIn: process.env.REFRESH_TOKEN_EXPIRY
+            expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN
         }
     )
 }
