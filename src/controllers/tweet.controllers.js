@@ -7,7 +7,9 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 
 const createTweet = asyncHandler(async (req, res) => {
   //TODO: create tweet
-  const { content } = req.User;
+  const { content } = req.body;
+  console.log("test", req.body);
+  
 
   if (!content) {
     throw new ApiError(400, "Their is nothing to tweet");
@@ -32,7 +34,7 @@ const getUserTweets = asyncHandler(async (req, res) => {
   const tweet = await Tweet.aggregate([
     {
       $match: {
-        owner: mongoose.Types.ObjectId(userId),
+        owner:new mongoose.Types.ObjectId(userId),
       },
     },
     {
@@ -51,6 +53,7 @@ const getUserTweets = asyncHandler(async (req, res) => {
         updatedAt: 1,
         "ownerDetails.username": 1,
         "ownerDetails.avatar": 1,
+        
       },
     },
   ]);
@@ -92,8 +95,8 @@ const updateTweet = asyncHandler(async (req, res) => {
 
 const deleteTweet = asyncHandler(async (req, res) => {
   //TODO: delete tweet
-  const { twwetId } = req.params;
-  if (!isValidObjectId(twwetId)) {
+  const { tweetId } = req.params;
+  if (!isValidObjectId(tweetId)) {
     throw new ApiError(400, "Tweet ID is not found ");
   }
 
