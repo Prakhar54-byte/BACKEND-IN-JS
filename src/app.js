@@ -61,8 +61,13 @@ const createTestUser = async () =>{
 
 // createTestUser()
 
+// Like routes
+import likeRouter from "./routers/like.routes.js";
+app.use("/api/v1/likes", likeRouter);
 
-
+// Tweet routes
+import tweetRouter from "./routers/tweet.routes.js";
+app.use("/api/v1/tweets", tweetRouter);
 
 
 // Export app for server initialization

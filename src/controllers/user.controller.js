@@ -328,7 +328,7 @@ const loggedOut = asyncHandler(async (req, res) => {
 const refreshAccessToken = asyncHandler(async (req, res) => {
   try {
     const incomingrefreshToken =
-      req.cookie.refreshToken || req.body.refreshToken;
+      req.cookies.refreshToken || req.body.refreshToken;
 
     if (!incomingrefreshToken) {
       throw new ApiError(401, "Token is taken");
@@ -413,7 +413,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
       throw new ApiError(401, "All fields are required");
     }
 
-    const user = User.findByIdAndUpdate(
+    const user =await User.findByIdAndUpdate(
       req.user?._id,
       {
         $set: {
@@ -445,6 +445,7 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     const avatar = await uploadOnCloudinary(avatarLocalPath);
 
     //TODO - delete old image from cloudinary
+    
 
     if (!avatar.url) {
       throw new ApiError(400, "Error while uplaoding on avatar");
