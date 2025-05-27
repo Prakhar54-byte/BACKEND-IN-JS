@@ -36,7 +36,7 @@ router
 
 router.route("/search").get(getAllVideos)
 
-router.route("/atwh/:videoId").post(addToWatchHistory)
+router.route("/watchhis/:videoId").post(addToWatchHistory)
 
 router
     .route("/:videoId")
