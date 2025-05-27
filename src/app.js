@@ -78,6 +78,10 @@ app.use("/api/v1/playlists", playlistRouter);
 import videoRouter from "./routers/video.routes.js";
 app.use("/api/v1/videos", videoRouter);
 
+// Subscription routes
+import subscriptionRouter from "./routers/subscription.routes.js";  
+app.use("/api/v1/subscriptions", subscriptionRouter);
+
 
 // Export app for server initialization
 export { app };
