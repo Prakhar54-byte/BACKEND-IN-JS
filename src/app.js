@@ -70,6 +70,15 @@ import tweetRouter from "./routers/tweet.routes.js";
 app.use("/api/v1/tweets", tweetRouter);
 
 
+// Playlist routes
+import playlistRouter from "./routers/playlist.routes.js";  
+app.use("/api/v1/playlists", playlistRouter);
+
+// Video routes
+import videoRouter from "./routers/video.routes.js";
+app.use("/api/v1/videos", videoRouter);
+
+
 // Export app for server initialization
 export { app };
 
