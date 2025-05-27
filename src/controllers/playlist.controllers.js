@@ -8,36 +8,30 @@ import { User } from "../models/user.model.js";
 const createPlaylist = asyncHandler(async (req, res) => {
   try {
     const { name, description, videoId } = req.body;
+    console.log("name, description, videoId", name, description, videoId);
+    
   
     //TODO: create playlist
-    if (!name || name.trim() === "") {
+    if (!name ) {
       throw new ApiError(400, "Playlist name not found");
     }
   
-    const { userId } = req.params;
+
   
-    const user = await User.findById(userId);
-  
-    if (!user) {
-      throw new ApiError(400, "User not found");
-    }
-    let video = [];
-  
+    const userId = req.user._id
+    
+    let videos = [];
     if (videoId && Array.isArray(videoId)) {
-      video = await VideoColorSpace.find({
-        _id: {
-          $in: videoId,
-        },
-      });
+      videos = videoId;
     }
   
     const playlist = new Playlist({
       name,
       description,
       user: userId,
-      videos: video.map((video) => video._id),
+      videos: videos,
     });
-  
+
     await playlist.save();
   
     return res
@@ -47,7 +41,7 @@ const createPlaylist = asyncHandler(async (req, res) => {
   } catch (error) {
     throw new ApiError(400,error?.message || "Some error in createPlaylist")
   }
-  // console.log(name," SO this is name");
+  
 });
 
 const getUserPlaylists = asyncHandler(async (req, res) => {
