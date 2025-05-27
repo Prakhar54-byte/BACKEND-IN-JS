@@ -199,6 +199,10 @@ const publishAVideo = asyncHandler(async (req, res) => {
         const videoFile = req.files?.videoFile?.[0];
         const thumbnailFile = req.files?.thumbnail?.[0];
 
+        console.log("Video File:", videoFile);
+        console.log("Thumbnail File:", thumbnailFile);
+        
+
 
 
         // Read video file buffer from disk
@@ -279,16 +283,16 @@ const publishAVideo = asyncHandler(async (req, res) => {
 
 const getVideoById = asyncHandler(async (req, res) => {
     try {
-        const { videoId } = req.params
+        const  {videoId}  = req.params
         //TODO: get video by id
-        if (!videoId || mongoose.Types.isValidObjectId(videoId)) {
+        if (!videoId || !mongoose.Types.ObjectId.isValid(videoId)) {
             throw new ApiError(400, "Video Id is incorrect to get video")
         }
 
         const videos = await Video.aggregate([
             {
                 $match: {
-                    _id: mongoose.Types.ObjectId(videoId)
+                    _id: new mongoose.Types.ObjectId(videoId)
                 }
             },
             {
@@ -330,7 +334,7 @@ const updateVideo = asyncHandler(async (req, res) => {
     try {
         const { videoId } = req.params
         //TODO: update video details like title, description, thumbnail
-        if (!videoId || mongoose.Types.isValidObjectId(videoId)) {
+        if (!videoId || !mongoose.Types.ObjectId.isValid(videoId)) {
             throw new ApiError(400, "Video Id is incorrect to update video")
         }
     
@@ -370,7 +374,7 @@ const deleteVideo = asyncHandler(async (req, res) => {
    try {
      const { videoId } = req.params
      //TODO: delete video
-     if(!videoId || mongoose.Types.isValidObjectId(videoId)){
+     if(!videoId || !mongoose.Types.ObjectId.isValid(videoId)){
          throw new ApiError(400, "Video Id is incorrect to delete video")
      }
  
@@ -399,7 +403,7 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
     try {
         const { videoId } = req.params
     
-        if(!videoId || mongoose.Types.isValidObjectId(videoId)){
+        if(!videoId || !mongoose.Types.ObjectId.isValid(videoId)){
             throw new ApiError(400, "Video Id is incorrect to toggle publish status")
         }
     
