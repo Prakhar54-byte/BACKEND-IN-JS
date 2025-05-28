@@ -1,158 +1,140 @@
-import mongoose from "mongoose"
-import { Comment } from "../models/comment.model.js"
-import { ApiError } from "../utils/ApiError.js"
-import { ApiResponse } from "../utils/ApiResponse.js"
-import { asyncHandler } from "../utils/asyncHandler.js"
+import mongoose from "mongoose";
+import { Comment } from "../models/comment.model.js";
+import { ApiError } from "../utils/ApiError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
 
 const getVideoComments = asyncHandler(async (req, res) => {
     try {
-        //TODO: get all comments for a video
-        const { videoId } = req.params
-        const { page = 1, limit = 10 } = req.query
-        if (!videoId || !mongoose.isValidObjectId(videoId)) {
-            throw new ApiError(400, "Video Id is incorrect to get all comments")
+        const { videoId } = req.params;
+        const { page = 1, limit = 10 } = req.query;
+
+        if (!videoId || !mongoose.Types.ObjectId.isValid(videoId)) {
+            throw new ApiError(400, "Video Id is incorrect to get all comments");
         }
 
-        const comments = await Comment.aggregatePaginate(
+        const pageNumber = parseInt(page, 10);
+        const limitNumber = parseInt(limit, 10);
 
-            {
-                $match: {
-                    video: mongoose.Types.ObjectId(videoId)
-                }
-            },
-            {
-                page,
-                limit
-            },
-            {
-                $lookup: {
-                    from: "users",
-                    localField: "owner",
-                    foreignField: "_id",
-                    as: "owner"
-                }
-            },
-            {
-                $unwind: "$owner"
-            },
-            {
-                $project: {
-                    "owner.password": 0,
-                    "owner.email": 0
-                }
-            },
-            Comment.find({ video: videoId }),
-            { page, limit }
-        )
+        if (isNaN(pageNumber) || isNaN(limitNumber) || pageNumber < 1 || limitNumber < 1) {
+            throw new ApiError(400, "Page and limit must be positive integers");
+        }
 
-        return res.status(200).json(new ApiResponse(200, { videoId, comments }, "All comments get"))
+        const skip = (pageNumber - 1) * limitNumber;
+
+        const comments = await Comment.aggregate([
+            { $match: { video: new mongoose.Types.ObjectId(videoId) } },
+            { $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner"
+            }},
+            { $unwind: "$owner" },
+            { $project: {
+                "owner.password": 0,
+                "owner.email": 0
+            }},
+            { $skip: skip },
+            { $limit: limitNumber }
+        ]);
+
+        console.log("Comments fetched successfully:", comments.length, "comments found for video:", videoId);
+
+        return res.status(200).json(new ApiResponse(200, { videoId, comments }, "All comments fetched successfully"));
     } catch (error) {
-        throw new ApiError(400, error?.message || "Some error in getVideoComments")
-
+        throw new ApiError(400, error?.message || "Some error in getVideoComments");
     }
+});
 
-})
 
 const addComment = asyncHandler(async (req, res) => {
     try {
-        // TODO: add a comment to a video
-        const { videoId, userId } = req.params
-        const { content } = req.body
-        if (!videoId || !mongoose.isValidObjectId(videoId)) {
-            throw new ApiError(400, "Video Id is incorrect to add a comment")
-        }
-        if (!userId || !mongoose.isValidObjectId(userId)) {
-            throw new ApiError(400, "User Id is incorrect to add a comment")
-        }
-        if (!content) {
-            throw new ApiError(400, "Content is required to add a comment")
+        const { videoId } = req.params;
+        const userId = req.user._id;
+        const { content } = req.body;
+
+        if (!videoId || !mongoose.Types.ObjectId.isValid(videoId)) {
+            throw new ApiError(400, "Video Id is incorrect to add a comment");
         }
 
-        const comment = new Comment([
-            {
-                content,
-                video: videoId,
-                owner: userId
-            }
-        ])
-        await comment.save()
-        return res.status(201).json(new ApiResponse(201, { videoId, comment }, "Comment added successfully"))
+        if (!content || typeof content !== 'string' || content.trim() === '') {
+            throw new ApiError(400, "Content is required to add a comment");
+        }
+
+        const comment = new Comment({
+            content: content.trim(),
+            video: videoId,
+            owner: userId
+        });
+
+        await comment.save();
+
+        return res.status(201).json(new ApiResponse(201, { videoId, comment }, "Comment added successfully"));
     } catch (error) {
-        throw new ApiError(400, error?.message || "Some error in addComment")
-
+        throw new ApiError(400, error?.message || "Some error in addComment");
     }
-})
-
+});
 const updateComment = asyncHandler(async (req, res) => {
-   try {
-     // TODO: update a comment
-     const { commentId } = req.params
-     const { userId } = req.body
-     const { content } = req.body
-     if (!commentId || !mongoose.isValidObjectId(commentId)) {
-         throw new ApiError(400, "Comment Id is incorrect to update a comment")
-     }
-     if (!userId || !mongoose.isValidObjectId(userId)) {
-         throw new ApiError(400, "User Id is incorrect to update a comment")
-     }
-     if (!content) {
-         throw new ApiError(400, "Content is required to update a comment")
-     }
- 
-     const comment = await Comment.findOneAndUpdate(
-         {
-             _id: commentId,
-             owner: userId
-         },
-         {
-             content
-         },
-         {
-             new: true
-         }
-     )
-     return res.status(200).json(new ApiResponse(200, { commentId, comment }, "Comment updated successfully"))
-   } catch (error) {
-       throw new ApiError(400, error?.message || "Some error in updateComment")
-    
-   }
+    try {
+        const { commentId } = req.params;
+        const userId = req.user._id;
+        const { content } = req.body;
 
-})
+        if (!commentId || !mongoose.Types.ObjectId.isValid(commentId)) {
+            throw new ApiError(400, "Comment Id is incorrect to update a comment");
+        }
 
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            throw new ApiError(400, "User Id is incorrect to update a comment");
+        }
+
+        if (!content || typeof content !== 'string' || content.trim() === '') {
+            throw new ApiError(400, "Content is required to update a comment");
+        }
+
+        const comment = await Comment.findOneAndUpdate(
+            { _id: commentId, owner: userId },
+            { content: content.trim() },
+            { new: true }
+        );
+
+        if (!comment) {
+            throw new ApiError(404, "Comment not found or you are not authorized to update");
+        }
+
+        return res.status(200).json(new ApiResponse(200, { commentId, comment }, "Comment updated successfully"));
+    } catch (error) {
+        throw new ApiError(400, error?.message || "Some error in updateComment");
+    }
+});
 const deleteComment = asyncHandler(async (req, res) => {
-   try {
-     // TODO: delete a comment
-     const { commentId } = req.params
-     const { userId } = req.body
- 
-     if (!commentId || !mongoose.isValidObjectId(commentId)) {
-         throw new ApiError(400, "Comment Id is incorrect to delete a comment")
-     }
-     if (!userId || !mongoose.isValidObjectId(userId)) {
-         throw new ApiError(400, "User Id is incorrect to delete a comment")
-     }
-     const comment = await Comment.findOneAndDelete({
-         _id: commentId,
-         owner: userId
-     })
-     if(!comment){
-         throw new ApiError(404, "Comment not found to delete")
-     }
- 
-     return res
-     .status(200)
-     .json(new ApiResponse(200, { commentId, comment }, "Comment deleted successfully"))
-   } catch (error) {
-       throw new ApiError(400, error?.message || "Some error in deleteComment")
-    
-   }
-})
+    try {
+        const { commentId } = req.params;
+        const userId = req.user._id;
 
+        if (!commentId || !mongoose.Types.ObjectId.isValid(commentId)) {
+            throw new ApiError(400, "Comment Id is incorrect to delete a comment");
+        }
+
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            throw new ApiError(400, "User Id is incorrect to delete a comment");
+        }
+
+        const comment = await Comment.findOneAndDelete({ _id: commentId, owner: userId });
+
+        if (!comment) {
+            throw new ApiError(404, "Comment not found or you are not authorized to delete");
+        }
+
+        return res.status(200).json(new ApiResponse(200, { commentId }, "Comment deleted successfully"));
+    } catch (error) {
+        throw new ApiError(400, error?.message || "Some error in deleteComment");
+    }
+});
 export {
     getVideoComments,
     addComment,
     updateComment,
     deleteComment
-}
-
-
+};

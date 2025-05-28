@@ -1,9 +1,9 @@
-import mongoose, { isValidObjectId } from "mongoose";
+import mongoose from "mongoose";
 import { Playlist } from "../models/playlist.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { User } from "../models/user.model.js";
+
 
 const createPlaylist = asyncHandler(async (req, res) => {
   try {
@@ -52,33 +52,20 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
     if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
       throw new ApiError(400, "User not found ad cannot get playlist");
     }
-  
-    const user_playlist = await Playlist.aggregate([
-      {
-        $match: {
-          owner: mongoose.Types.ObjectId(userId),
-        },
-      },
-      {
-        $lookup: {
-          from: "playlists",
-          localField: "owner",
-          foreignField: "_id",
-          as: "owner",
-          pipeline: {
-            $project: {
-              name: 1,
-              description: 1,
-              video: 1,
-            },
-          },
-        },
-      },
-    ]);
-  
+
+    
+
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+  
+    const userPlaylists = await Playlist.aggregate([
+    { $match: { owner: new mongoose.Types.ObjectId(userId) } },
+    { $project: { name: 1, description: 1, videos: 1 } },
+    { $skip: skip },
+    { $limit: limit }
+  ]);
+  
   
   //   const userPlaylists = await Playlist.aggregate([
   //     { $match: { owner: mongoose.Types.ObjectId(userId) } },
@@ -94,7 +81,7 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
         200,
         {
           // playlists: userPlaylists,
-          playlists: user_playlist,
+          playlists: userPlaylists,
           total: totalPlaylists,
           page,
           limit,
@@ -113,7 +100,7 @@ const getPlaylistById = asyncHandler(async (req, res) => {
   try {
     const { playlistId } = req.params;
     //TODO: get playlist by id
-    if(!playlistId || !mongoose.Types.ObjectId(playlistId)){
+    if(!playlistId || !mongoose.Types.ObjectId.isValid(playlistId)){
       throw new ApiError(
           400,
           "PLaylist ID is invalid"
@@ -125,7 +112,7 @@ const getPlaylistById = asyncHandler(async (req, res) => {
   
     const playlist = await Playlist.aggregate([
       {
-        $match: { _id: mongoose.Types.ObjectId(playlistId) },
+        $match: { _id: new mongoose.Types.ObjectId(playlistId) },
       },
       {
         $lookup: {
@@ -176,24 +163,31 @@ const getPlaylistById = asyncHandler(async (req, res) => {
 const addVideoToPlaylist = asyncHandler(async (req, res) => {
   try {
     const { playlistId, videoId } = req.params;
+    console.log("playlistId, videoId", playlistId, videoId);
+    
     if(!playlistId || !videoId || !mongoose.Types.ObjectId.isValid(playlistId) || 
     !mongoose.Types.ObjectId.isValid(videoId)) {
       throw new ApiError(400,"PLaylist Id or Video Id is wrong")
     }
-    const playlist = await Playlist.findById(playlistId)
   
+    
+    const playlist = await Playlist.findById(playlistId).populate('videos');
+
+    if (!playlist) {
+  throw new ApiError(404, "Playlist not found");
+}
+
+
+    await Playlist.findOneAndUpdate(
+      {_id: playlistId, owner: req.user._id},
+      {
+        $addToSet: {  videoId } // Use $addToSet to avoid duplicates
+      },
+      { new: true, runValidators: true } // Return the updated document and validate
+    )
   
-  
-    // Check if the video is already in the playlist
-  
-    if (playlist.videos.includes(videoId)) {
-      throw new ApiError(400, "Video already exists in the playlist");
-    }
-  
-  
-    playlist.videos.push(videoId)
-  
-    await playlist.save()
+
+
   
     return res
     .status(200)
@@ -257,14 +251,18 @@ try {
     const { playlistId } = req.params;
     // TODO: delete playlist
   
-    if(!playlistId || mongoose.Types.isValidObjectId(playlistId)){
+    if(!playlistId || !mongoose.Types.ObjectId.isValid(playlistId)){
       throw new ApiError(400,"Playlist do not exist")
     }
   
-    const playlist = await Playlist.findByIdAndDelete({
+    const playlist = await Playlist.findOneAndDelete({
       _id:playlistId,
       owner:req.user._id
     })
+    console.log("playlist", playlist);
+    
+
+    
   
     return res
     .status(200)
@@ -286,7 +284,7 @@ const updatePlaylist = asyncHandler(async (req, res) => {
    const { name, description } = req.body;
    //TODO: update playlist
  
-   if(!playlistId || mongoose.Types.isValidObjectId(playlistId)){
+   if(!playlistId || !mongoose.Types.ObjectId.isValid(playlistId)){
      throw new ApiError(400,"Playlist do not exist to update")
    }
  
