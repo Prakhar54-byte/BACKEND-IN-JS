@@ -82,6 +82,10 @@ app.use("/api/v1/videos", videoRouter);
 import subscriptionRouter from "./routers/subscription.routes.js";  
 app.use("/api/v1/subscriptions", subscriptionRouter);
 
+// Comment routes
+import commentRouter from "./routers/comment.routes.js";  
+app.use("/api/v1/comments", commentRouter);
+
 
 // Export app for server initialization
 export { app };
