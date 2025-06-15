@@ -14,6 +14,7 @@ import { request } from "https"
 import { promises as f } from 'fs';
 import { formatDistanceToNowStrict } from 'date-fns'; // Importing date-fns for date formatting
 import { parse } from "path"
+import { title } from "process"
 
 const getAllVideos = asyncHandler(async (req, res) => {
     try {
@@ -25,6 +26,9 @@ const getAllVideos = asyncHandler(async (req, res) => {
             sortType = "desc",
             userId // Default to the authenticated user's ID
         } = req.query;
+
+
+
 
     
 
@@ -52,32 +56,67 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
         // Determine the sort order
         const sortOrder = sortType.toLowerCase() === "asc" ? 1 : -1;
+
+        const aggregationPipeline = []
+
+        //1. Initial filter (owner if userId provided)
+        if(userId && mongoose.Types.ObjectId.isValid(userId)){
+            aggregationPipeline.push({
+                $match:{
+                    owner : new mongoose.Types.ObjectId(userId)
+                }
+            })
+        }
+
+        // 2 . Owner lookup
+        aggregationPipeline.push({
+            $lookup:{
+                from:"users",
+                localField:"owner",
+                foreignField:"_id",
+                as:"ownerDetails"
+            }
+        },
+    {$unwind:"$ownerDetails"})
+
+        // 3. Search filter (title/desp/username)
+        if(query){
+            aggregationPipeline.push({
+                $match:{
+                    $or:[
+                        {title:{$regex:query,$options:'i'}},
+                        {description:{$regex:query,$options:"i"}},
+                        {"ownerDetails.username":{$regex:query,$options:"i"}}
+                    ]
+                }
+            })
+        }
+
+        //4 . Sorting and pagination
+        aggregationPipeline.push(
+            {$sort:{[sortBy]:sortOrder}},
+            {$skip:(pageNum - 1)*limitNum},
+            {$limit:limitNum},
+            {
+                $project:{
+                    _id:1,
+                    title:1,
+                    description:1,
+                    thumbnail:1,
+                    views:1,
+                    duration:1,
+                    createdAt:1,
+                    owner:{
+                        _id:"$ownerDetails._id",
+                        username:"$ownerDetails.username",
+                        avatar:"$ownerDeatsils.avatar"
+                    }
+                }
+            }
+
+        )
     
-        const videos = await Video.aggregate([
-            matchStage,
-            {
-                $lookup: {
-                    from: "users",
-                    localField: "owner",
-                    foreignField: "_id",
-                    as: "ownerDetails"
-                }
-            },
-            { $unwind: "$ownerDetails" },
-            {
-                $project: {
-                    _id: 1,
-                    title: 1,
-                    description: 1,
-                    "ownerDetails.name": 1,
-                    "ownerDetails.email": 1,
-                    createdAt: 1
-                }
-            },
-            { $sort: { [sortBy]: sortOrder } },
-            { $skip: (pageNum - 1) * limitNum },
-            { $limit: limitNum }
-        ]);
+        const videos = await Video.aggregate(aggregationPipeline)
         return res
         .status(200)
         .json(
