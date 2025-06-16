@@ -12,6 +12,12 @@ dotenv.config({ path:"../.env"});
 
 const PORT = process.env.PORT || 8080;
 
+const options = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+};
+
+
 
 
 connectDB()

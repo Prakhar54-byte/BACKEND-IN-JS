@@ -225,36 +225,25 @@ const logInUser = asyncHandler(async (req, res) => {
   // 4. acess and refresh token
   // 5. senf tokens in form of cokkies
 
-  const {  email, password, username } = req.body;
-  console.log(req.body);
-
-  console.log(email);
-  console.log(username);
+  const { username,email , password } = req.body;
+  // if(!identifier){
+    // throw new ApiError(400, "Username or email  is required");
+  // }
 
   
 
-  if (!username) {
-    throw new ApiError(400, "username is required");
-  }
-
-  if (!email) {
-    throw new ApiError(400, "email is required");
-  }
 
   // const user = await User.findOne({
   //   $or: [{ username }, { email }],
   // });
 
-  const users = await User.find({})
-  console.log(`All Users:`, users);
-  
-
   const user = await User.findOne({
-  $or: [
-    { username: username },
-    { email: email }
-  ]
-});
+    $or:[
+      {username: username },
+      {email: email }
+    ]
+  })
+  
   console.log("User in login", user);
   
   if (!user) {
@@ -269,13 +258,19 @@ const logInUser = asyncHandler(async (req, res) => {
     user._id
   );
 
+  console.log("Access Token:", accessToken);
+  console.log("Refresh Token:", refreshToken);
+  
+
   const loggedInUser = await User.findById(user._id).select(
     "-password -refreshToken"
   );
 
   const options = {
     httpOnly: true,
-    secure: true,
+    secure: process.env.NODE_ENV === "production", // Set secure flag in production
+    sameSite:'lax', // Adjust as needed, 'lax' is a common choice
+    maxAge: 24 * 60 * 60 * 1000, // 1 day in milliseconds
   };
 
   return res
@@ -398,7 +393,20 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 
 const getCurrentUser = asyncHandler(async (req, res) => {
   try {
-    // const user = await User.findById(req.user._id).select("-password -refreshToken")
+    console.log("Request User in getCurrentUser:", req.user);
+    
+
+    if(!req.user || !req.user._id){
+      throw new ApiError(401, "User not authenticated");
+    }
+    const user = await User.findById(req.user._id).select("-password -refreshToken")
+    .lean();
+    console.log("User in getCurrentUser", user);
+    
+    if(!user){
+      throw new ApiError(404, "User not found");
+    }
+    console.log("This is user", user);
     return res.status(200).json(new ApiResponse(200, req.user, "User found"));
   } catch (error) {
     throw new ApiError(400, error?.message || "Some error getCurrentUser");
