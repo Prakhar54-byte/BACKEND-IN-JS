@@ -22,7 +22,7 @@ const toggleSubscription = asyncHandler(async (req, res) => {
   
   
     const userId = req.user.id;
-    // caches.log(userId);
+    console.log("userId:", userId);
   
     const user = await User.findById(userId);
     if (!user) {
