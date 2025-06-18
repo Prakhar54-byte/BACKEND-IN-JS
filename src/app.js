@@ -86,6 +86,9 @@ app.use("/api/v1/subscriptions", subscriptionRouter);
 import commentRouter from "./routers/comment.routes.js";  
 app.use("/api/v1/comments", commentRouter);
 
+// Channel routes
+import channelRouter from "./routers/channel.routes.js";  
+app.use("/api/v1/channels", channelRouter);
 
 // Export app for server initialization
 export { app };
