@@ -6,6 +6,7 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import path from "path";
 // import log from "video.js/dist/types/utils/log.js";
 
 const generateAccessAndRefreshToken = async (userId) => {
@@ -270,7 +271,9 @@ const logInUser = asyncHandler(async (req, res) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production", // Set secure flag in production
     sameSite:'lax', // Adjust as needed, 'lax' is a common choice
-    maxAge: 24 * 60 * 60 * 1000, // 1 day in milliseconds
+    maxAge: 7* 24 * 60 * 60 * 1000, // 1 day in milliseconds
+    domain:"localhost" ,// Adjust domain as needed
+    path: "/", // Ensure the cookie is accessible on all routes
   };
 
   return res
@@ -282,8 +285,8 @@ const logInUser = asyncHandler(async (req, res) => {
         200,
         {
           user: loggedInUser,
-          accessToken,
-          refreshToken,
+          
+          
         },
         "User loggedIn"
       )
