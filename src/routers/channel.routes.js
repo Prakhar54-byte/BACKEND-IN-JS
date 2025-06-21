@@ -11,12 +11,13 @@ import {
   uploadChannelAvatar,
   uploadChannelBanner
 } from "../controllers/channel.controller.js";
+import { upload } from "../middlewares/multer.middleware.js";
 
 
 const router = Router();
 
 // Create a new channel (authenticated)
-router.post("/create", verifyJWT, createChannel);
+router.post("/create", verifyJWT,upload.single("avatar"), createChannel);
 
 // Update an existing channel (authenticated, owner only)
 router.patch("/:channelId", verifyJWT, updateChannel);

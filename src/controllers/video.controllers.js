@@ -15,6 +15,8 @@ import { promises as f } from 'fs';
 import { formatDistanceToNowStrict } from 'date-fns'; // Importing date-fns for date formatting
 import { parse } from "path"
 import { title } from "process"
+import { Channel } from "../models/channel.model.js"
+// import { User } from "../models/user.model.js"
 
 const getAllVideos = asyncHandler(async (req, res) => {
     try {
@@ -226,12 +228,23 @@ const getVideoDurationFromBuffer = async (fileBuffer) => {
 
 const publishAVideo = asyncHandler(async (req, res) => {
     try {
-        const { title, description } = req.body;
+        const { title, description ,channelId} = req.body;
+        console.log("Request Body:", req.body);
+        
 
         if (!title || !description) {
             throw new ApiError(400, "Missing required fields: title, description, video file or thumbnail");
         }
         console.log("Request Files:", req.files);
+        const userId = req.user._id;
+
+        const channel = await User.findById(userId);
+        // console.log("THis is test", Channel.);
+        
+        console.log("Channel:", userId);
+        if(!channel ) {
+            throw new ApiError(403, "You are not authorized to publish videos on this channel");
+        }
 
         // Remove: const f = require('fs').promises;
 

@@ -5,26 +5,40 @@ import { User } from "../models/user.model.js";
 
 export const verifyJWT = asyncHandler(async(req, _, next) => {
     try {
-        const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "")
+
         
-        console.log("token", token);
-        
-        console.log("Verifying JWT token...",req.cookies)
-        if (!token) {
-            throw new ApiError(401, "Unauthorized request")
-        }
+        let token = req.cookies?.accessToken || req.header("Authorization")?.replace(/^Bearer\s+/i, "");
     
-        const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET)
-    
-        const user = await User.findById(decodedToken?._id).select("-password -refreshToken")
-    
-        if (!user) {
-            
-            throw new ApiError(401, "Invalid Access Token")
-        }
-    
-        req.user = user;
-        next()
+    // Special handling for Next.js development
+    if (!token && req.headers.cookie) {
+      const cookies = req.headers.cookie.split(';').reduce((cookies, cookie) => {
+        const [name, value] = cookie.trim().split('=');
+        cookies[name] = value;
+        return cookies;
+      }, {});
+      token = cookies.accessToken;
+    }
+
+    if (!token || token === "null" || token === "undefined") {
+      console.error("Token missing in request");
+      throw new ApiError(401, "Unauthorized request - Token missing");
+    }
+
+    // Additional token format validation
+    if (typeof token !== "string" || !token.includes(".")) {
+      console.error("Malformed token:", token);
+      throw new ApiError(401, "Invalid token format");
+    }
+
+    const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+    const user = await User.findById(decodedToken?._id).select("-password -refreshToken");
+
+    if (!user) {
+      throw new ApiError(401, "Invalid access token");
+    }
+
+    req.user = user;
+    next();
     } catch (error) {
         throw new ApiError(401, error?.message || "Invalid access token")
     }

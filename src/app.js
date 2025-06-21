@@ -6,11 +6,15 @@ const app = express();
 
 // Set up CORS
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",  // Ensure CORS Origin is correct
+    origin:  "http://localhost:3000",  // Ensure CORS Origin is correct
     credentials: true, 
     allowedHeaders: ['Content-Type', 'Authorization','x-access-token'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE']
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    exposedHeaders:['x-access-token', 'Content-Type', 'Authorization']
 }));
+
+
+
 
 app.get("/ping", (req, res) => {
   console.log("Ping route hit");
@@ -21,8 +25,8 @@ app.get("/ping", (req, res) => {
 // app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // app.use(express.json({ limit: "10mb" }));
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(express.urlencoded({ limit: "10000mb", extended: true }));
+app.use(express.json({ limit: "10000mb" }));
 
 console.log("Body size limit set to 10mb");
 

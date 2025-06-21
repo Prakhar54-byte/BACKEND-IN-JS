@@ -2,14 +2,25 @@ import { Channel } from "../models/channel.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { User } from "../models/user.model.js";
 
 // import { upload } from "../middlewares/multer.middleware";
 
 import mongoose from "mongoose";
+import { log } from "console";
+// import { log } from "node:console";
 
  const createChannel= asyncHandler(async(requestAnimationFrame,res)=>{
     const {name,description} = requestAnimationFrame.body;
-    const userId = requestAnimationFrame.user.id;
+    const userId = requestAnimationFrame.user._id;
+
+    console.log("Headers:", requestAnimationFrame.headers);
+  console.log("Body:", requestAnimationFrame.body);
+  console.log("File:", requestAnimationFrame.file); 
+
+    console.log("Creating channel with data:", );
+    console.log("Request body:", requestAnimationFrame.body);
+    
 
     if(!name || !description){
         throw new ApiError(400,"Name and description are required");
@@ -19,14 +30,32 @@ import mongoose from "mongoose";
     if(!user){
         throw new ApiError(404,"User not found");
     }
+    const existingChannel = await Channel.findOne({ name, owner: userId });
+    if(existingChannel){
+        throw new ApiError(400,"Channel with this name already exists for this user");
+    }
+    const avatarPath = requestAnimationFrame.file ? requestAnimationFrame.file.path : user.avatar;
+    const bannerPath = requestAnimationFrame.banner ? requestAnimationFrame.banner.path : "";
+     if(!bannerPath){
+        // channel.banner = bannerPath;
+        user.coverImage = bannerPath;
+        await user.save();
+    }
+    console.log("Avatar Path:", avatarPath)
+    console.log("Banner Path:", bannerPath);
+    
+    if(!avatarPath && !bannerPath){
+        throw new ApiError(400,"At least one of avatar or banner must be provided");
+    }
 
     const channel = await Channel.create({
         name,
         description,
         owner: userId,
         avatar: requestAnimationFrame.file ? requestAnimationFrame.file.path : "",
-        banner: requestAnimationFrame.banner ? requestAnimationFrame.banner.path : ""
+        banner: requestAnimationFrame.file ? requestAnimationFrame.banner.path : ""
     });
+   
 
     return res.status(201).json(new ApiResponse(201,channel,"Channel created successfully"));
 })  
