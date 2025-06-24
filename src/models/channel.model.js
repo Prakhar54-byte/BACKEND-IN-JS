@@ -2,7 +2,7 @@ import mongoose,{Schema} from "mongoose";
 
 const channelSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true, unique: true, trim: true },
+    name: { type: String, required: true },
     description: { type: String, default: "" },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     avatar: { type: String }, // URL to channel avatar image

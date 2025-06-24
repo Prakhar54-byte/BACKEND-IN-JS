@@ -55,6 +55,7 @@ import { log } from "console";
         avatar: requestAnimationFrame.file ? requestAnimationFrame.file.path : "",
         banner: requestAnimationFrame.file ? requestAnimationFrame.banner.path : ""
     });
+    
    
 
     return res.status(201).json(new ApiResponse(201,channel,"Channel created successfully"));

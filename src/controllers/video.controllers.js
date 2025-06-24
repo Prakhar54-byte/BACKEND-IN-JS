@@ -16,6 +16,10 @@ import { formatDistanceToNowStrict } from 'date-fns'; // Importing date-fns for 
 import { parse } from "path"
 import { title } from "process"
 import { Channel } from "../models/channel.model.js"
+import { sendVideoEvent } from "../../../ingestion/kafka-producers/videoEventProducer.js"
+import { triggerVideoWebhook } from "../../../ingestion/webhook-handlers/videoWebhook.js"
+import { extractVideoMetrics } from "../../../ingestion/wasm-preprocessor/ffmpegWrapper.js" 
+
 // import { User } from "../models/user.model.js"
 
 const getAllVideos = asyncHandler(async (req, res) => {
@@ -311,6 +315,8 @@ const publishAVideo = asyncHandler(async (req, res) => {
             return res.status(409).json(new ApiResponse(409, {}, "Video with the same title and description already exists"));
         }
 
+        const videoMetrics = await extractVideoMetrics(videoFileBuffer);
+
         // Create new video
         const newVideo = await Video.create({
             title,
@@ -321,8 +327,38 @@ const publishAVideo = asyncHandler(async (req, res) => {
             owner: req.user._id,
             views: 0,
             isPublished: true,
+            metrics:{
+                frameAnalysis:videoMetrics,
+                frameCount: videoMetrics.frameCount,
+                duration: videoMetrics.duration,
+                bitrate: videoMetrics.bitrate,
+                size: videoMetrics.size,
+                videoCodec: videoMetrics.videoCodec,
+                audioCodec: videoMetrics.audioCodec,
+                format: videoMetrics.format,
+                resolution: videoMetrics.resolution,
+                fps: videoMetrics.fps,
+                aspectRatio: videoMetrics.aspectRatio,
+                audioChannels: videoMetrics.audioChannels,
+                audioSampleRate: videoMetrics.audioSampleRate,
+                keyFrames: videoMetrics.keyFrames
+            }
         });
 
+        newVideo.save();
+
+        await sendVideoEvent("video_published", {
+            id: newVideo._id,
+            title: newVideo.title,
+            description: newVideo.description,
+            owner: newVideo.owner
+        })
+        await triggerVideoWebhook("video.created",{
+            id:newVideo._id,
+            title:newVideo.title,
+            description:newVideo.description,
+            thumbnail:newVideo.thumbnail,
+        })
         return res.status(201).json(
             new ApiResponse(201, { video: newVideo }, "Video published successfully")
         );
