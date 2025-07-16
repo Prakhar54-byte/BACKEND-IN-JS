@@ -1,4 +1,4 @@
-import mongoose, { isValidObjectId } from "mongoose";
+import mongoose, { isValidObjectId, mongo } from "mongoose";
 import { User } from "../models/user.model.js";
 import { Subscrption } from "../models/subscription.model.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -71,9 +71,20 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
   // const userId = req.body.user.id;
   try {
     const { channelId } = req.params;
+
+    let userId;
+2
+    if(channelId === "subscribed") {
+      userId = req.user._id; // Get the user ID from the authenticated user
+    }else{
+      if(!mongoose.Types.ObjectId.isValid(channelId)) {
+        throw new ApiError(400, "Not a valid channel ID");
+      }
+      userId = channelId;
+    }
   
     // 1. Check if the subscriber exists
-    const subscriber = await User.findById(channelId);
+    const subscriber = await User.findById(userId);
     if (!subscriber) {
       throw new ApiError(400, "Not a valid subscriber");
     }

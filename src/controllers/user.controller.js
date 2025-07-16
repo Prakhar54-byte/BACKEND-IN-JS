@@ -335,6 +335,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       incomingrefreshToken,
       process.env.REFRESH_TOKEN_SECRET
     );
+    console.log("Decoded Token:", decodedToken);
+    
 
     const user = await User.findById(decodedToken?._id);
     if (!user) {
