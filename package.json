@@ -16,7 +16,7 @@
   "license": "ISC",
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
-    "axios": "^1.10.0",
+    "axios": "^1.11.0",
     "backend-in-js": "file:",
     "bcrypt": "^5.1.1",
     "cookie": "^1.0.2",
