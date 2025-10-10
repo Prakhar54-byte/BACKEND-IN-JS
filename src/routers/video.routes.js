@@ -12,6 +12,7 @@ import {
 } from "../controllers/video.controllers.js"
 import {verifyJWT} from "../middlewares/authMiddleware.js"
 import {upload} from "../middlewares/multer.middleware.js"
+import { triggerVideoWebhook } from '../../../ingestion/webhook-handlers/videoWebhook.js';
 
 const router = Router();
 router.use(verifyJWT); // Apply verifyJWT middleware to all routes in this file
@@ -47,5 +48,6 @@ router
     
 
 router.route("/toggle/publish/:videoId").patch(togglePublishStatus);
+
 
 export default router
