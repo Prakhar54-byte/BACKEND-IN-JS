@@ -16,7 +16,7 @@ import { formatDistanceToNowStrict } from 'date-fns'; // Importing date-fns for 
 import { parse } from "path"
 import { title } from "process"
 import { Channel } from "../models/channel.model.js"
-import { sendVideoEvent } from "../../../ingestion/kafka-producers/videoEventProducer.js"
+import { connectProducer, sendVideoEvent } from "../../../ingestion/kafka-producers/videoEventProducer.js"
 import { triggerVideoWebhook } from "../../../ingestion/webhook-handlers/videoWebhook.js"
 import { extractVideoMetrics } from "../../../ingestion/wasm-preprocessor/ffmpegWrapper.js" 
 
@@ -140,71 +140,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
 })
 
-// const publishAVideo = asyncHandler(async (req, res) => {
-//     try {
-//         const { title, description } = req.body
-//         // TODO: get video, upload to cloudinary, create video
-//         if (!title || !description) {
-//             throw new ApiError(400, "Something  went wrong in title or description to publish ")
-//         }
 
-
-
-//         const videoValidationSchema = Joi.object({
-//             title: Joi.string().required(),
-//             description: Joi.string().required(),
-//             videoFile: Joi.string().required(), // Assuming Cloudinary URL
-//             thumbnail: Joi.string().required(),
-//             duration: Joi.number().required(),
-//         });
-
-//         const validateVideoPayload = (payload) => {
-//             const { error } = videoValidationSchema.validate(payload);
-//             if (error) throw new ApiError(400, error.details[0].message);
-//         };
-
-
-
-//         const videos = await Video.findOne(
-//             {
-//                 title: title,
-//                 description: description
-//             }
-//         )
-
-//         if (!videos) {
-//             const newVideo = await Video.create({
-//                 title,
-//                 description,
-//                 videoFiles: uploadedVideo.secure_url,
-//                 thumbnail: uploadedThumbnail.secure_url,
-//                 duration: req.body.duration,
-//                 owner: req.user._id,
-//                 views: 0,
-//                 isPublished: true,
-//             });
-
-//             await uploadOnCloudinary(newVideo.videoFiles)
-//         } else {
-
-//             await uploadOnCloudinary(videos.videoFiles)
-//         }
-
-//         return res
-//             .status(200)
-//             .json(
-//                 new ApiResponse(
-//                     200,
-//                     { videos, newVideo },
-//                     "Video publish"
-//                 )
-//             )
-
-//     } catch (e) {
-//         throw new ApiError(400, e?.message || "Some error in publishAVideo")
-//     }
-
-// })
 
 const getVideoDurationFromBuffer = async (fileBuffer) => {
     const tmpFile = await tmp.file({
@@ -346,6 +282,9 @@ const publishAVideo = asyncHandler(async (req, res) => {
         });
 
         newVideo.save();
+        console.log("New Video Created:", newVideo);
+
+        await connectProducer()
 
         await sendVideoEvent("video_published", {
             id: newVideo._id,
@@ -353,18 +292,16 @@ const publishAVideo = asyncHandler(async (req, res) => {
             description: newVideo.description,
             owner: newVideo.owner
         })
-        await triggerVideoWebhook("video.created",{
-            id:newVideo._id,
-            title:newVideo.title,
-            description:newVideo.description,
-            thumbnail:newVideo.thumbnail,
-        })
+        console.log("In this fun error is not sendvideoEvent");
+        
+        console.log("In this error");
+        
         return res.status(201).json(
             new ApiResponse(201, { video: newVideo }, "Video published successfully")
         );
 
     } catch (e) {
-        throw new ApiError(500, e?.message || "Failed to publish video");
+        throw new ApiError(500, e.message || "Failed to publish video");
     }
 });
 
@@ -607,5 +544,6 @@ export {
     deleteVideo,
     togglePublishStatus,
     homepageVideos,
-    addToWatchHistory
+    addToWatchHistory,
+    triggerVideoWebhook
 }

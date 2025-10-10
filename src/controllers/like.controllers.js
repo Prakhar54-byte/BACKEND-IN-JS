@@ -3,6 +3,7 @@ import { Like } from "../models/like.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { dashboardEventEmitter } from "../eventEmitter.js";
 
 // Helper to validate ObjectId
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -52,6 +53,15 @@ export const getLikedVideos = asyncHandler(async (req, res) => {
       select: "title url description" // Adjust fields as needed
     })
     .select("video createdAt");
+
+    if(likes){
+      dashboardEventEmitter.emit('stats_updated',{
+        userId: req.user._id,
+        entity: 'like',
+        action: 'fetch',
+        timestamp: new Date()
+      })
+    }
 
   const likedVideos = likes
     .filter(like => like.video) // Filter out null videos
