@@ -28,20 +28,33 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 from: "users",
                 localField: "owner",
                 foreignField: "_id",
-                as: "owner"
+                as: "ownerDetails"
             }},
-            { $unwind: "$owner" },
+            { $unwind: { 
+                path: "$ownerDetails",
+                preserveNullAndEmptyArrays: true 
+            }},
             { $project: {
-                "owner.password": 0,
-                "owner.email": 0
+                _id: 1,
+                content: 1,
+                video: 1,
+                createdAt: 1,
+                updatedAt: 1,
+                owner: {
+                    _id: { $ifNull: ["$ownerDetails._id", null] },
+                    username: { $ifNull: ["$ownerDetails.username", "Unknown"] },
+                    fullName: { $ifNull: ["$ownerDetails.fullName", "Unknown User"] },
+                    avatar: { $ifNull: ["$ownerDetails.avatar", null] }
+                }
             }},
+            { $sort: { createdAt: -1 } },
             { $skip: skip },
             { $limit: limitNumber }
         ]);
 
         console.log("Comments fetched successfully:", comments.length, "comments found for video:", videoId);
 
-        return res.status(200).json(new ApiResponse(200, { videoId, comments }, "All comments fetched successfully"));
+        return res.status(200).json(new ApiResponse(200, comments, "All comments fetched successfully"));
     } catch (error) {
         throw new ApiError(400, error?.message || "Some error in getVideoComments");
     }

@@ -8,7 +8,8 @@ import {
     publishAVideo,
     togglePublishStatus,
     updateVideo,
-    addToWatchHistory
+    addToWatchHistory,
+    checkVideoTitle
 } from "../controllers/video.controllers.js"
 import {verifyJWT} from "../middlewares/authMiddleware.js"
 import {upload} from "../middlewares/multer.middleware.js"
@@ -36,6 +37,8 @@ router
     );
 
 router.route("/search").get(getAllVideos)
+
+router.route("/check-title").get(checkVideoTitle)
 
 router.route("/watchhis/:videoId").post(addToWatchHistory)
 

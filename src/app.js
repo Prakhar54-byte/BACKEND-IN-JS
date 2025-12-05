@@ -82,6 +82,10 @@ app.use("/api/v1/playlists", playlistRouter);
 import videoRouter from "./routers/video.routes.js";
 app.use("/api/v1/videos", videoRouter);
 
+// Video Processing routes
+import videoProcessingRouter from "./routers/videoProcessing.routes.js";
+app.use("/api/v1/video-processing", videoProcessingRouter);
+
 // Subscription routes
 import subscriptionRouter from "./routers/subscription.routes.js";  
 app.use("/api/v1/subscriptions", subscriptionRouter);
@@ -93,6 +97,10 @@ app.use("/api/v1/comments", commentRouter);
 // Channel routes
 import channelRouter from "./routers/channel.routes.js";  
 app.use("/api/v1/channels", channelRouter);
+
+// Message routes
+import messageRouter from "./routers/message.routes.js";
+app.use("/api/v1/messages", messageRouter);
 
 // Export app for server initialization
 export { app };

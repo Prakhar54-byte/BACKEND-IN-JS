@@ -115,7 +115,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
                     owner:{
                         _id:"$ownerDetails._id",
                         username:"$ownerDetails.username",
-                        avatar:"$ownerDeatsils.avatar"
+                        avatar:"$ownerDetails.avatar"
                     }
                 }
             }
@@ -165,6 +165,28 @@ const getVideoDurationFromBuffer = async (fileBuffer) => {
     });
 };
 
+
+const checkVideoTitle = asyncHandler(async (req, res) => {
+    try {
+        const { title } = req.query;
+        const userId = req.user._id;
+
+        if (!title) {
+            throw new ApiError(400, "Title is required");
+        }
+
+        const existingVideo = await Video.findOne({ 
+            title: title.trim(), 
+            owner: userId 
+        });
+
+        return res.status(200).json(
+            new ApiResponse(200, { exists: !!existingVideo }, "Title check completed")
+        );
+    } catch (e) {
+        throw new ApiError(500, e.message || "Failed to check title");
+    }
+});
 
 const publishAVideo = asyncHandler(async (req, res) => {
     try {
@@ -245,16 +267,23 @@ const publishAVideo = asyncHandler(async (req, res) => {
         }
 
         // Check if the same video already exists
-        const existingVideo = await Video.findOne({ title, description });
+        const existingVideo = await Video.findOne({ title, owner: req.user._id });
 
         if (existingVideo) {
-            return res.status(409).json(new ApiResponse(409, {}, "Video with the same title and description already exists"));
+            return res.status(409).json(new ApiResponse(409, {}, "Video with the same title already exists"));
         }
 
-        const videoMetrics = await extractVideoMetrics(videoFileBuffer);
+        let videoMetrics = null;
+        try {
+            videoMetrics = await extractVideoMetrics(videoFileBuffer);
+            console.log("Video Metrics Extracted:", videoMetrics);
+        } catch (metricsError) {
+            console.log("Failed to extract video metrics:", metricsError.message);
+            // Continue without metrics
+        }
 
         // Create new video
-        const newVideo = await Video.create({
+        const videoData = {
             title,
             description,
             videoFiles: uploadedVideo.secure_url,
@@ -263,8 +292,12 @@ const publishAVideo = asyncHandler(async (req, res) => {
             owner: req.user._id,
             views: 0,
             isPublished: true,
-            metrics:{
-                frameAnalysis:videoMetrics,
+        };
+
+        // Only add metrics if extraction was successful
+        if (videoMetrics) {
+            videoData.metrics = {
+                frameAnalysis: videoMetrics,
                 frameCount: videoMetrics.frameCount,
                 duration: videoMetrics.duration,
                 bitrate: videoMetrics.bitrate,
@@ -278,29 +311,35 @@ const publishAVideo = asyncHandler(async (req, res) => {
                 audioChannels: videoMetrics.audioChannels,
                 audioSampleRate: videoMetrics.audioSampleRate,
                 keyFrames: videoMetrics.keyFrames
-            }
-        });
+            };
+        }
 
-        newVideo.save();
+        const newVideo = await Video.create(videoData);
+
+        await newVideo.save();
         console.log("New Video Created:", newVideo);
 
-        await connectProducer()
-
-        await sendVideoEvent("video_published", {
-            id: newVideo._id,
-            title: newVideo.title,
-            description: newVideo.description,
-            owner: newVideo.owner
-        })
-        console.log("In this fun error is not sendvideoEvent");
-        
-        console.log("In this error");
+        // Try to send Kafka event, but don't fail upload if Kafka is down
+        try {
+            await connectProducer();
+            await sendVideoEvent("video_published", {
+                id: newVideo._id,
+                title: newVideo.title,
+                description: newVideo.description,
+                owner: newVideo.owner
+            });
+            console.log("Video event sent to Kafka successfully");
+        } catch (kafkaError) {
+            console.log("Failed to send Kafka event (non-critical):", kafkaError.message);
+            // Continue without Kafka - video is already saved
+        }
         
         return res.status(201).json(
             new ApiResponse(201, { video: newVideo }, "Video published successfully")
         );
 
     } catch (e) {
+        console.error("Video upload error:", e);
         throw new ApiError(500, e.message || "Failed to publish video");
     }
 });
@@ -336,18 +375,39 @@ const getVideoById = asyncHandler(async (req, res) => {
                     _id: 1,
                     title: 1,
                     description: 1,
-                    "ownerDetails.name": 1, // Example: Include owner name
-                    "ownerDetails.email": 1 // Example: Include owner email
+                    videoFiles: 1,
+                    thumbnail: 1,
+                    duration: 1,
+                    views: 1,
+                    isPublished: 1,
+                    createdAt: 1,
+                    updatedAt: 1,
+                    owner: {
+                        _id: "$ownerDetails._id",
+                        username: "$ownerDetails.username",
+                        fullName: "$ownerDetails.fullName",
+                        avatar: "$ownerDetails.avatar"
+                    }
                 }
             }
         ]);
+
+        if (!videos || videos.length === 0) {
+            throw new ApiError(404, "Video not found");
+        }
+
+        // Return single video object, not array
+        const video = videos[0];
+        // Map videoFiles to videoFile for frontend compatibility
+        video.videoFile = video.videoFiles;
+
         return res
             .status(200)
             .json(
                 new ApiResponse(
                     200,
-                    { videoId, videos },
-                    "All videos get"
+                    video,
+                    "Video fetched successfully"
                 )
             )
     } catch (e) {
@@ -462,28 +522,53 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
 
 const homepageVideos = asyncHandler(async (req, res) => {
     try {
-        // Fetch the first 16 videos sorted by the most recent
-        const videos = await Video.find()
-            .sort({ createdAt: -1 }) // Sort by createdAt in descending order
-            .limit(16) // Limit to 16 videos
-            .select("thumbnail title duration views createdAt")
-            .populate("owner", "username avatar"); // Populate the owner's username and avatar
-         
-        // Check if no videos are found
-        const formattedVideos = videos.map(video => ({
-            ...video.toObject(),
-            createdAt: formatDistanceToNowStrict(new Date(video.createdAt), { addSuffix: true })
-          }));
+        const { page = 1, limit = 20 } = req.query;
+        const pageNum = parseInt(page, 10);
+        const limitNum = parseInt(limit, 10);
+        const skip = (pageNum - 1) * limitNum;
 
-        // Return the videos along with user details
+        // Fetch videos with owner details using aggregation
+        const videos = await Video.aggregate([
+            { $match: { isPublished: true } },
+            { $sort: { createdAt: -1 } },
+            { $skip: skip },
+            { $limit: limitNum },
+            { $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "ownerDetails"
+            }},
+            { $unwind: {
+                path: "$ownerDetails",
+                preserveNullAndEmptyArrays: true
+            }},
+            { $project: {
+                _id: 1,
+                title: 1,
+                description: 1,
+                thumbnail: 1,
+                videoFiles: 1,
+                duration: 1,
+                views: 1,
+                isPublished: 1,
+                createdAt: 1,
+                owner: {
+                    _id: { $ifNull: ["$ownerDetails._id", null] },
+                    username: { $ifNull: ["$ownerDetails.username", "Unknown"] },
+                    fullName: { $ifNull: ["$ownerDetails.fullName", "Unknown User"] },
+                    avatar: { $ifNull: ["$ownerDetails.avatar", null] }
+                }
+            }}
+        ]);
+
+        // Return the videos
         return res.status(200).json(
-            new ApiResponse(200, formattedVideos, "Videos fetched successfully")
+            new ApiResponse(200, videos, "Videos fetched successfully")
         );
     } catch (error) {
         console.error("Error fetching homepage videos:", error);
-        return res.status(500).json(
-            new ApiResponse(500, null, "Failed to fetch homepage videos")
-        );
+        throw new ApiError(500, error?.message || "Failed to fetch homepage videos");
     }
 });
 
@@ -545,5 +630,6 @@ export {
     togglePublishStatus,
     homepageVideos,
     addToWatchHistory,
-    triggerVideoWebhook
+    triggerVideoWebhook,
+    checkVideoTitle
 }
