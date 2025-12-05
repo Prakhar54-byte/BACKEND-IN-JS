@@ -1,152 +1,42 @@
-import mongoose, { isValidObjectId } from "mongoose";
-import { Tweet } from "../models/tweet.model.js";
-import { User } from "../models/user.model.js";
-import { Subscription } from "../models/subscription.model.js";
+import mongoose from "mongoose";
+import { Message } from "../models/message.model.js";
+import { Conversation } from "../models/conversation.model.js";
 import { AutoWelcome } from "../models/autoWelcome.model.js";
+import { Subscription } from "../models/subscription.model.js";
+import { User } from "../models/user.model.js";
 import { Video } from "../models/video.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
-const createTweet = asyncHandler(async (req, res) => {
-  
-  const { content } = req.body;
-  console.log("test", req.body);
-  
-  
-  
-
-  if (!content) {
-    throw new ApiError(400, "Their is nothing to tweet");
-  }
-  const tweet = await Tweet.create({
-    content,
-    owner: req.user._id,
-  });
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, tweet, "Tweet created successfully"));
-});
-
-const getUserTweets = asyncHandler(async (req, res) => {
-  // TODO: get user tweets
-  const userId = req.user._id ? req.user._id : req.params.userId;
-
-  
-
-  if (!userId) {
-    throw new ApiError(400, "User not found");
-  }
-  const tweet = await Tweet.aggregate([
-    {
-      $match: {
-        owner:new mongoose.Types.ObjectId(userId),
-      },
-    },
-    {
-      $lookup: {
-        from: "users",
-        localField: "owner",
-        foreignField: "_id",
-        as: "ownerDetails",
-      },
-    },
-    { $unwind: "$ownerDetails" },
-    {
-      $project: {
-        content: 1,
-        createdAt: 1,
-        updatedAt: 1,
-        "ownerDetails.username": 1,
-        "ownerDetails.avatar": 1,
-        
-      },
-    },
-  ]);
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, tweet, "User tweets fetched successfully"));
-});
-
-const updateTweet = asyncHandler(async (req, res) => {
-  //TODO: update tweet
-  const { content } = req.body;
-  const { tweetId } = req.params;
-
-  if (!tweetId) {
-    throw new ApiError(400, "Invalid tweet ID");
-  }
-  if (!content || content.trim() === "") {
-    throw new ApiError(400, "Content cannot be empty");
-  }
-  const tweet = await Tweet.findByIdAndUpdate(
-    {
-      _id: tweetId,
-      owner: req.user._id,
-    },
-    {
-      $set: { content },
-    },
-    {
-      new: true,
-    }
-  );
-  if (!tweet) {
-    throw new ApiError(400, "Tweet not found or you are not owner");
-  }
-
-  return res.status(200).json(new ApiResponse(200, tweet, "Tweet added"));
-});
-
-const deleteTweet = asyncHandler(async (req, res) => {
-  //TODO: delete tweet
-  const { tweetId } = req.params;
-  if (!isValidObjectId(tweetId)) {
-    throw new ApiError(400, "Tweet ID is not found ");
-  }
-
-  const tweet = await Tweet.findByIdAndDelete({
-    _id: tweetId,
-    owner: req.user._id,
-  });
-
-  if (!tweet) {
-    throw new ApiError(400, "Tweet not found or you're not the owner");
-  }
-
-  return res
-    .status(200).json(new ApiResponse (
-	    200,("Tweet is deleted")
-    ))
-})
-
-// Helper: Determine message tier based on relationship
+// Determine message tier based on relationship
 const determineMessageTier = async (senderId, receiverId) => {
+  // Check if receiver is subscribed to sender
   const receiverSubscribedToSender = await Subscription.findOne({
     subscriber: receiverId,
     channel: senderId,
   });
 
+  // Check if sender is subscribed to receiver
   const senderSubscribedToReceiver = await Subscription.findOne({
     subscriber: senderId,
     channel: receiverId,
   });
 
   if (receiverSubscribedToSender) {
-    return "subscriber";
+    return "subscriber"; // Receiver is a subscriber of sender
   } else if (senderSubscribedToReceiver) {
-    return "following";
+    return "following"; // Sender is following the receiver
   } else {
-    return "non_subscriber";
+    return "non_subscriber"; // No subscription relationship
   }
 };
 
-// Helper: Calculate badges for a user
+// Calculate badges for a user
 const calculateBadges = async (userId, channelId) => {
   const badges = [];
 
+  // Check if new subscriber (within 7 days)
   const subscription = await Subscription.findOne({
     subscriber: userId,
     channel: channelId,
@@ -161,9 +51,24 @@ const calculateBadges = async (userId, channelId) => {
     if (daysSinceSubscription >= 365) {
       badges.push("early_supporter");
     }
+  }
 
+  // Check watch count (simplified - in production, track actual watch history)
+  try {
+    const watchHistory = await User.findById(userId).select("watchHistory");
+    if (watchHistory && watchHistory.watchHistory && watchHistory.watchHistory.length >= 10) {
+      badges.push("watched_10_plus");
+    }
+  } catch (error) {
+    console.log("Watch history check skipped:", error.message);
+  }
+
+  // Check if top fan (top 1% engagement - simplified)
+  // In production, calculate based on views, likes, comments, etc.
+  if (subscription) {
     const allSubscribers = await Subscription.countDocuments({ channel: channelId });
     if (allSubscribers > 0) {
+      // Simplified: mark first 1% as top fans (or minimum 1 subscriber if < 100)
       const topFanThreshold = Math.max(1, Math.ceil(allSubscribers * 0.01));
       const userRank = await Subscription.countDocuments({
         channel: channelId,
@@ -175,19 +80,10 @@ const calculateBadges = async (userId, channelId) => {
     }
   }
 
-  try {
-    const watchHistory = await User.findById(userId).select("watchHistory");
-    if (watchHistory && watchHistory.watchHistory && watchHistory.watchHistory.length >= 10) {
-      badges.push("watched_10_plus");
-    }
-  } catch (error) {
-    console.log("Watch history check skipped:", error.message);
-  }
-
   return badges;
 };
 
-// Send a message (using tweet model)
+// Send a message
 const sendMessage = asyncHandler(async (req, res) => {
   const { receiverId, content, messageType, metadata } = req.body;
   const senderId = req.user._id;
@@ -196,27 +92,52 @@ const sendMessage = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Receiver and content are required");
   }
 
+  // Check if receiver exists
   const receiver = await User.findById(receiverId);
   if (!receiver) {
     throw new ApiError(404, "Receiver not found");
   }
 
+  // Determine tier
   const tier = await determineMessageTier(senderId, receiverId);
-  const badges = await calculateBadges(senderId, receiverId);
 
-  const message = await Tweet.create({
-    content,
-    owner: senderId,
+  // Create message
+  const message = await Message.create({
+    sender: senderId,
     receiver: receiverId,
-    isMessage: true,
+    content,
     messageType: messageType || "text",
-    tier,
-    badges,
     metadata: metadata || {},
+    tier,
   });
 
-  const populatedMessage = await Tweet.findById(message._id)
-    .populate("owner", "username fullName avatar")
+  // Find or create conversation
+  let conversation = await Conversation.findOne({
+    participants: { $all: [senderId, receiverId] },
+  });
+
+  if (!conversation) {
+    const badges = await calculateBadges(senderId, receiverId);
+    conversation = await Conversation.create({
+      participants: [senderId, receiverId],
+      tier,
+      badges,
+      lastMessage: message._id,
+      unreadCount: { [receiverId]: 1 },
+    });
+  } else {
+    // Update conversation
+    conversation.lastMessage = message._id;
+    conversation.tier = tier;
+    conversation.badges = await calculateBadges(senderId, receiverId);
+    const currentUnread = conversation.unreadCount.get(receiverId.toString()) || 0;
+    conversation.unreadCount.set(receiverId.toString(), currentUnread + 1);
+    await conversation.save();
+  }
+
+  // Populate message details
+  const populatedMessage = await Message.findById(message._id)
+    .populate("sender", "username fullName avatar")
     .populate("receiver", "username fullName avatar");
 
   return res
@@ -227,94 +148,104 @@ const sendMessage = asyncHandler(async (req, res) => {
 // Get inbox by tier (Priority Inbox)
 const getInboxByTier = asyncHandler(async (req, res) => {
   const userId = req.user._id;
-  const { tier } = req.query;
+  const { tier } = req.query; // 'subscriber', 'non_subscriber', 'following', or 'all'
 
   let matchQuery = {
-    $or: [
-      { owner: userId, receiver: { $ne: null } },
-      { receiver: userId },
-    ],
-    isMessage: true,
+    participants: userId,
   };
 
   if (tier && tier !== "all") {
     matchQuery.tier = tier;
   }
 
-  const messages = await Tweet.aggregate([
-    { $match: matchQuery },
+  const conversations = await Conversation.aggregate([
     {
-      $addFields: {
-        otherUserId: {
-          $cond: {
-            if: { $eq: ["$owner", new mongoose.Types.ObjectId(userId)] },
-            then: "$receiver",
-            else: "$owner",
-          },
-        },
-      },
-    },
-    {
-      $group: {
-        _id: "$otherUserId",
-        lastMessage: { $last: "$$ROOT" },
-        unreadCount: {
-          $sum: {
-            $cond: [
-              {
-                $and: [
-                  { $eq: ["$receiver", new mongoose.Types.ObjectId(userId)] },
-                  { $eq: ["$isRead", false] },
-                ],
-              },
-              1,
-              0,
-            ],
-          },
-        },
-        tier: { $last: "$tier" },
-        badges: { $last: "$badges" },
-      },
+      $match: matchQuery,
     },
     {
       $lookup: {
         from: "users",
-        localField: "_id",
-        foreignField: "_id",
+        let: { participants: "$participants" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $in: ["$_id", "$$participants"] },
+                  { $ne: ["$_id", new mongoose.Types.ObjectId(userId)] },
+                ],
+              },
+            },
+          },
+          {
+            $project: {
+              _id: 1,
+              username: 1,
+              fullName: 1,
+              avatar: 1,
+            },
+          },
+        ],
         as: "otherUser",
       },
     },
-    { $unwind: "$otherUser" },
+    {
+      $unwind: "$otherUser",
+    },
+    {
+      $lookup: {
+        from: "messages",
+        localField: "lastMessage",
+        foreignField: "_id",
+        as: "lastMessageDetails",
+      },
+    },
+    {
+      $unwind: {
+        path: "$lastMessageDetails",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $addFields: {
+        unreadCountObj: {
+          $arrayElemAt: [
+            {
+              $filter: {
+                input: { $objectToArray: "$unreadCount" },
+                as: "item",
+                cond: { $eq: ["$$item.k", userId.toString()] },
+              },
+            },
+            0,
+          ],
+        },
+      },
+    },
     {
       $project: {
         _id: 1,
-        otherUser: {
-          _id: "$otherUser._id",
-          username: "$otherUser.username",
-          fullName: "$otherUser.fullName",
-          avatar: "$otherUser.avatar",
-        },
+        otherUser: 1,
         tier: 1,
         badges: 1,
-        lastMessage: {
-          content: "$lastMessage.content",
-          createdAt: "$lastMessage.createdAt",
-          messageType: "$lastMessage.messageType",
-        },
-        unreadCount: 1,
-        updatedAt: "$lastMessage.updatedAt",
+        lastMessage: "$lastMessageDetails",
+        unreadCount: { $ifNull: ["$unreadCountObj.v", 0] },
+        updatedAt: 1,
       },
     },
-    { $sort: { updatedAt: -1 } },
+    {
+      $sort: { updatedAt: -1 },
+    },
   ]);
 
+  // Group by tier
   const grouped = {
     subscriber: [],
     following: [],
     non_subscriber: [],
   };
 
-  messages.forEach((conv) => {
+  conversations.forEach((conv) => {
     if (grouped[conv.tier]) {
       grouped[conv.tier].push(conv);
     }
@@ -325,13 +256,13 @@ const getInboxByTier = asyncHandler(async (req, res) => {
     .json(
       new ApiResponse(
         200,
-        tier === "all" ? grouped : messages,
+        tier === "all" ? grouped : conversations,
         "Inbox fetched successfully"
       )
     );
 });
 
-// Get conversation messages
+// Get messages in a conversation
 const getConversationMessages = asyncHandler(async (req, res) => {
   const { otherUserId } = req.params;
   const userId = req.user._id;
@@ -339,22 +270,28 @@ const getConversationMessages = asyncHandler(async (req, res) => {
 
   const skip = (page - 1) * limit;
 
-  const messages = await Tweet.find({
-    isMessage: true,
+  const messages = await Message.find({
     $or: [
-      { owner: userId, receiver: otherUserId },
-      { owner: otherUserId, receiver: userId },
+      { sender: userId, receiver: otherUserId },
+      { sender: otherUserId, receiver: userId },
     ],
   })
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(parseInt(limit))
-    .populate("owner", "username fullName avatar")
+    .populate("sender", "username fullName avatar")
     .populate("receiver", "username fullName avatar");
 
-  await Tweet.updateMany(
-    { owner: otherUserId, receiver: userId, isRead: false, isMessage: true },
+  // Mark messages as read
+  await Message.updateMany(
+    { sender: otherUserId, receiver: userId, isRead: false },
     { isRead: true }
+  );
+
+  // Update conversation unread count
+  await Conversation.updateOne(
+    { participants: { $all: [userId, otherUserId] } },
+    { $set: { [`unreadCount.${userId}`]: 0 } }
   );
 
   return res
@@ -380,6 +317,7 @@ const setupAutoWelcome = asyncHandler(async (req, res) => {
     pollOptions,
   } = req.body;
 
+  // Validate video if included
   if (includeVideo && videoId) {
     const video = await Video.findOne({ _id: videoId, owner: creatorId });
     if (!video) {
@@ -387,6 +325,7 @@ const setupAutoWelcome = asyncHandler(async (req, res) => {
     }
   }
 
+  // Find or create auto-welcome config
   let autoWelcome = await AutoWelcome.findOne({ creator: creatorId });
 
   if (!autoWelcome) {
@@ -404,6 +343,7 @@ const setupAutoWelcome = asyncHandler(async (req, res) => {
       pollOptions: pollOptions || [],
     });
   } else {
+    // Update existing
     autoWelcome.enabled = enabled !== undefined ? enabled : autoWelcome.enabled;
     autoWelcome.message = message || autoWelcome.message;
     autoWelcome.includeVideo = includeVideo !== undefined ? includeVideo : autoWelcome.includeVideo;
@@ -475,70 +415,72 @@ const triggerAutoWelcome = async (subscriberId, channelId) => {
       messageContent += `\n\n📊 Poll: ${autoWelcome.pollQuestion}`;
     }
 
-    const badges = await calculateBadges(subscriberId, channelId);
-
-    await Tweet.create({
-      owner: channelId,
+    // Create welcome message
+    const message = await Message.create({
+      sender: channelId,
       receiver: subscriberId,
       content: messageContent,
-      isMessage: true,
       messageType: "auto_welcome",
       metadata,
       tier: "subscriber",
-      badges,
     });
+
+    // Create or update conversation
+    let conversation = await Conversation.findOne({
+      participants: { $all: [channelId, subscriberId] },
+    });
+
+    const badges = await calculateBadges(subscriberId, channelId);
+
+    if (!conversation) {
+      await Conversation.create({
+        participants: [channelId, subscriberId],
+        tier: "subscriber",
+        badges,
+        lastMessage: message._id,
+        unreadCount: { [subscriberId]: 1 },
+      });
+    } else {
+      conversation.lastMessage = message._id;
+      conversation.tier = "subscriber";
+      conversation.badges = badges;
+      const currentUnread = conversation.unreadCount.get(subscriberId.toString()) || 0;
+      conversation.unreadCount.set(subscriberId.toString(), currentUnread + 1);
+      await conversation.save();
+    }
   } catch (error) {
     console.error("Auto-welcome message error:", error);
   }
 };
 
-export { 
-  createTweet, 
-  getUserTweets, 
-  updateTweet, 
-  deleteTweet,
+// Delete a message
+const deleteMessage = asyncHandler(async (req, res) => {
+  const { messageId } = req.params;
+  const userId = req.user._id;
+
+  const message = await Message.findById(messageId);
+
+  if (!message) {
+    throw new ApiError(404, "Message not found");
+  }
+
+  if (message.sender.toString() !== userId.toString()) {
+    throw new ApiError(403, "You can only delete your own messages");
+  }
+
+  await Message.findByIdAndDelete(messageId);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Message deleted successfully"));
+});
+
+export {
   sendMessage,
   getInboxByTier,
   getConversationMessages,
   setupAutoWelcome,
   getAutoWelcomeConfig,
-  triggerAutoWelcome
+  triggerAutoWelcome,
+  deleteMessage,
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

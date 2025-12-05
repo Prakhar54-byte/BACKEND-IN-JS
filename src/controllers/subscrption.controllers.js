@@ -1,9 +1,10 @@
 import mongoose from "mongoose";
 import { User } from "../models/user.model.js";
-import { Subscrption } from "../models/subscription.model.js";
+import { Subscription } from "../models/subscription.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { triggerAutoWelcome } from "./tweet.controllers.js";
 
 // Renamed 'Subscrption' to 'Subscription' for clarity, assuming model export is 'Subscription'
 // Make sure this matches your model file. I'll use 'Subscrption' to match your code.
@@ -24,14 +25,14 @@ const toggleSubscription = asyncHandler(async (req, res) => {
 
   // Check if subscription already exists
   // *** FIX: Using 'subscriber' field name ***
-  const existingSubscription = await Subscrption.findOne({
+  const existingSubscription = await Subscription.findOne({
     subscriber: userId,
     channel: channelId,
   });
 
   if (existingSubscription) {
     // Already subscribed, so remove it
-    await Subscrption.findByIdAndDelete(existingSubscription._id);
+    await Subscription.findByIdAndDelete(existingSubscription._id);
 
     return res
       .status(200)
@@ -39,10 +40,15 @@ const toggleSubscription = asyncHandler(async (req, res) => {
   } else {
     // Not subscribed, so create it
     // *** FIX: Using 'subscriber' field name ***
-    await Subscrption.create({
+    await Subscription.create({
       subscriber: userId,
       channel: channelId,
     });
+
+    // Trigger auto-welcome message
+    triggerAutoWelcome(userId, channelId).catch(err => 
+      console.error("Auto-welcome trigger error:", err)
+    );
 
     return res
       .status(200)
@@ -58,21 +64,15 @@ const toggleSubscription = asyncHandler(async (req, res) => {
 
 // controller to return channel list to which user has subscribed
 const getSubscribedChannels = asyncHandler(async (req, res) => {
-  const { channelId } = req.params;
-  let userId;
+  const { userId } = req.params;
 
-  if (channelId === "subscribed") {
-    userId = req.user._id; // Get the user ID from the authenticated user
-  } else {
-    if (!mongoose.Types.ObjectId.isValid(channelId)) {
-      throw new ApiError(400, "Not a valid channel ID");
-    }
-    userId = channelId;
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new ApiError(400, "Not a valid user ID");
   }
 
   // *** FIX: This is the correct logic for this route ***
   // Use aggregation to find channels the user is subscribed to
-  const subscribedChannels = await Subscrption.aggregate([
+  const subscribedChannels = await Subscription.aggregate([
     {
       $match: {
         // *** FIX: Using 'subscriber' field name ***
@@ -84,20 +84,21 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
         from: "users",
         localField: "channel",
         foreignField: "_id",
-        as: "subscribedChannel",
+        as: "channelDetails",
       },
     },
     {
-      $unwind: "$subscribedChannel",
+      $unwind: "$channelDetails",
     },
     {
       $project: {
-        _id: 0,
-        subscribedChannel: {
-          _id: 1,
-          username: 1,
-          fullName: 1,
-          avatar: 1,
+        _id: 1,
+        channel: {
+          _id: "$channelDetails._id",
+          username: "$channelDetails.username",
+          fullName: "$channelDetails.fullName",
+          avatar: "$channelDetails.avatar",
+          coverImage: "$channelDetails.coverImage",
         },
       },
     },
@@ -109,15 +110,12 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
       .json(new ApiResponse(200, [], "User is not subscribed to any channels"));
   }
 
-  // Extract just the channel details
-  const channels = subscribedChannels.map(sub => sub.subscribedChannel);
-
   return res
     .status(200)
     .json(
       new ApiResponse(
         200,
-        channels,
+        subscribedChannels,
         "Subscribed channels fetched successfully"
       )
     );
@@ -139,7 +137,7 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
 
   // *** FIX: This is the correct logic for this function's name ***
   // Find all subscriptions *to* this channel
-  const subscribers = await Subscrption.aggregate([
+  const subscribers = await Subscription.aggregate([
     {
       $match: {
         channel: new mongoose.Types.ObjectId(channelId),
@@ -148,7 +146,7 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
     {
       $lookup: {
         from: "users",
-        localField: "subscriber", // field in Subscrption model
+        localField: "subscriber", // field in Subscription model
         foreignField: "_id",     // field in User model
         as: "subscriberDetails",
       },

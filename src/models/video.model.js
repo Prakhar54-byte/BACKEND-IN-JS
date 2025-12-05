@@ -4,7 +4,7 @@ import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 const videoSchema = new Schema(
   {
     videoFiles: {
-      type: String, // cloudinary url
+      type: String, // cloudinary url (original)
       required: true,
     },
     thumbnail: {
@@ -20,7 +20,7 @@ const videoSchema = new Schema(
       required: true,
     },
     duration: {
-      type: Number, // cloudinary url
+      type: Number,
       required: true,
     },
     views: {
@@ -34,6 +34,45 @@ const videoSchema = new Schema(
     owner: {
       type: Schema.Types.ObjectId,
       ref: "User",
+    },
+    // Video processing fields
+    processingStatus: {
+      type: String,
+      enum: ["pending", "processing", "completed", "failed"],
+      default: "pending",
+    },
+    // HLS streaming support
+    hlsMasterPlaylist: {
+      type: String, // URL to master.m3u8
+    },
+    // Multiple quality variants
+    variants: [{
+      quality: {
+        type: String,
+        enum: ["240p", "480p", "720p", "1080p", "4k"],
+      },
+      url: String,
+      resolution: String,
+      bitrate: String,
+      size: Number,
+    }],
+    // Thumbnail strip for video scrubbing
+    thumbnailStrip: [{
+      timestamp: Number,
+      url: String,
+    }],
+    // Video metadata
+    metadata: {
+      codec: String,
+      format: String,
+      fps: Number,
+      aspectRatio: String,
+      audioCodec: String,
+      audioChannels: Number,
+      originalWidth: Number,
+      originalHeight: Number,
+      originalSize: Number,
+      originalBitrate: Number,
     },
   },
 

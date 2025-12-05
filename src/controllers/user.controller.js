@@ -104,12 +104,12 @@ const registerUser = asyncHandler(async (req, res) => {
     const avatar = avatarlocalPath ? await uploadOnCloudinary(avatarlocalPath.path): null;
     // console.log("Avatar URL:", avatar);
     
-    const coverImage = coverImageLocalPath ? await uploadOnCloudinary(coverImageLocalPath.path): null;
+    const coverImage = coverImageLocalPath ? await uploadOnCloudinary(coverImageLocalPath.path): "";
     // console.log("Cover Image :", coverImageLocalPath);
     
     // console.log("Cover Image URL:", coverImage);
 
-    if (!avatar || !coverImage) {
+    if (!avatar ) {
       throw new ApiError(500, "Cloudinary Error");
     }
 
@@ -137,7 +137,13 @@ const registerUser = asyncHandler(async (req, res) => {
       throw new ApiError(500, "User not created");
     }
     // Step 9
-    return res.status(200).json(new ApiResponse(200, createdUser));
+    console.log("User created successfully:", {
+      id: createdUser._id,
+      username: createdUser.username,
+      email: createdUser.email,
+      fullName: createdUser.fullName
+    });
+    return res.status(200).json(new ApiResponse(200, createdUser, "User registered successfully"));
   } catch (error) {
     throw new ApiError(400, error?.message || "Some error regisetUser");
   }
@@ -226,30 +232,45 @@ const logInUser = asyncHandler(async (req, res) => {
   // 4. acess and refresh token
   // 5. senf tokens in form of cokkies
 
-  const { username,email , password } = req.body;
-  // if(!identifier){
-    // throw new ApiError(400, "Username or email  is required");
-  // }
-
+  const { username, email, password } = req.body;
   
+  console.log("Login request body:", { username, email, password: password ? "***" : undefined });
 
+  if (!email && !username) {
+    throw new ApiError(400, "Username or email is required");
+  }
 
-  // const user = await User.findOne({
-  //   $or: [{ username }, { email }],
-  // });
+  if (!password) {
+    throw new ApiError(400, "Password is required");
+  }
 
+  // Build query only with provided fields to avoid matching undefined values
+  const query = [];
+  if (username) {
+    query.push({ username: username });
+  }
+  if (email) {
+    query.push({ email: email });
+  }
+
+  // Find user with all fields including password
   const user = await User.findOne({
-    $or:[
-      {username: username },
-      {email: email }
-    ]
-  })
+    $or: query
+  });
   
-  console.log("User in login", user);
+  console.log("User found:", {
+    id: user?._id,
+    username: user?.username,
+    email: user?.email,
+    fullName: user?.fullName,
+    hasPassword: !!user?.password,
+    allFields: user ? Object.keys(user.toObject()) : []
+  });
   
   if (!user) {
     throw new ApiError(404, "User not found");
   }
+
 
   const isPasswordValidate = await user.isPasswordCorrect(password);
   if (!isPasswordValidate) {
@@ -518,23 +539,33 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
 
 const getUserChannelProfile = asyncHandler(async (req, res) => {
   try {
-    const { username } = req.params;
+    const { username, userId } = req.params;
 
-    if (!username?.trim()) {
-      throw new ApiError(400, "Username is missing");
+    let matchQuery = {};
+    
+    if (userId) {
+      // If userId is provided, use it
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        throw new ApiError(400, "Invalid user ID");
+      }
+      matchQuery = { _id: new mongoose.Types.ObjectId(userId) };
+    } else if (username) {
+      // If username is provided, use it
+      if (!username.trim()) {
+        throw new ApiError(400, "Username is missing");
+      }
+      matchQuery = { username: username.toLowerCase() };
+    } else {
+      throw new ApiError(400, "Username or User ID is required");
     }
-
-    // User.find({username})
 
     const channel = await User.aggregate([
       {
-        $match: {
-          username: username?.toLowerCase(),
-        },
+        $match: matchQuery,
       },
       {
         $lookup: {
-          from: "subscrptions",
+          from: "subscriptions",
           localField: "_id",
           foreignField: "channel",
           as: "subscribers",
@@ -542,18 +573,18 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
       },
       {
         $lookup: {
-          from: "subcrptions",
+          from: "subscriptions",
           localField: "_id",
-          foreignField: "subcriber",
+          foreignField: "subscriber",
           as: "subscribedTo",
         },
       },
       {
         $addFields: {
-          subcribersCount: {
+          subscribersCount: {
             $size: "$subscribers",
           },
-          channelsSubscribeToCounts: {
+          channelsSubscribedToCount: {
             $size: "$subscribedTo",
           },
           isSubscribed: {
@@ -569,15 +600,17 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         $project: {
           fullName: 1,
           username: 1,
-          subcribersCount: 1,
-          channelsSubscribeToCounts: 1,
+          email: 1,
+          subscribersCount: 1,
+          channelsSubscribedToCount: 1,
           avatar: 1,
           coverImage: 1,
           createdAt: 1,
+          isSubscribed: 1,
         },
       },
     ]);
-    console.log("This is channel", channel);
+    console.log("Channel profile fetched:", channel);
 
     if (!channel?.length) {
       throw new ApiError(404, "Channel not found");
@@ -589,7 +622,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
   } catch (error) {
     throw new ApiError(
       400,
-      error?.message || "Some error getUserChannelProfile"
+      error?.message || "Some error in getUserChannelProfile"
     );
   }
 });
