@@ -7,8 +7,11 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Absolute path for uploads
-const uploadPath = path.join(__dirname, "public", "uploads");
+// Get the project root directory
+const projectRoot = path.resolve(__dirname, "../../"); 
+
+// Absolute path for temp uploads
+const uploadPath = path.join(projectRoot, "public", "temp");
 
 // Create upload directory if it doesn't exist
 if (!fs.existsSync(uploadPath)) {
@@ -21,9 +24,8 @@ const storage = multer.diskStorage({
     cb(null, uploadPath);
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, file.fieldname + "-" + uniqueSuffix + ext);
+    // We will use the original file name for now and handle conflicts later
+    cb(null, file.originalname);
   },
 });
 
@@ -31,6 +33,6 @@ const storage = multer.diskStorage({
 export const upload = multer({
   storage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100 MB limit
+    fileSize: 10 * 1024 * 1024 * 1024, // 10 GB limit
   },
 });

@@ -4,23 +4,47 @@ import { User } from "../models/user.model.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
-import { uploadOnCloudinary } from "../utils/cloudinary.js"
-import Joi from 'joi';
-import { Readable } from "stream"
-import ffmpeg from 'fluent-ffmpeg';
-import fs from "fs/promises"
-import tmp from 'tmp-promise';
-import { request } from "https"
-import { promises as f } from 'fs';
 import { formatDistanceToNowStrict } from 'date-fns'; // Importing date-fns for date formatting
 import { parse } from "path"
 import { title } from "process"
-import { Channel } from "../models/channel.model.js"
-import { connectProducer, sendVideoEvent } from "../../../ingestion/kafka-producers/videoEventProducer.js"
-import { triggerVideoWebhook } from "../../../ingestion/webhook-handlers/videoWebhook.js"
-import { extractVideoMetrics } from "../../../ingestion/wasm-preprocessor/ffmpegWrapper.js" 
+import { Channel } from "../models/channel.model.js" 
+import fs from "fs"
+import path from "path"
+// import { log } from "console"
 
 // import { User } from "../models/user.model.js"
+
+const toPublicUrlPath = (inputPath) => {
+    if (!inputPath || typeof inputPath !== "string") return inputPath;
+    const normalized = inputPath.replace(/\\/g, "/");
+    // Keep absolute URLs (e.g., cloud storage)
+    if (/^https?:\/\//i.test(normalized)) return normalized;
+    const publicMarker = "/public/";
+    const idx = normalized.lastIndexOf(publicMarker);
+    if (idx !== -1) {
+        return normalized.slice(idx + publicMarker.length);
+    }
+    if (normalized.startsWith("public/")) {
+        return normalized.slice("public/".length);
+    }
+    // If it's an absolute filesystem path not under /public, it's not web-accessible.
+    if (normalized.startsWith("/")) return "";
+    return normalized;
+};
+
+const toPublicDbPath = (inputPath) => {
+    if (!inputPath || typeof inputPath !== "string") return inputPath;
+    const normalized = inputPath.replace(/\\/g, "/");
+    if (/^https?:\/\//i.test(normalized)) return normalized;
+    const publicMarker = "/public/";
+    const idx = normalized.lastIndexOf(publicMarker);
+    if (idx !== -1) {
+        // Store as "public/..." so it can later be converted to a URL path.
+        return normalized.slice(idx + 1);
+    }
+    if (normalized.startsWith("public/")) return normalized;
+    return normalized;
+};
 
 const getAllVideos = asyncHandler(async (req, res) => {
     try {
@@ -30,12 +54,14 @@ const getAllVideos = asyncHandler(async (req, res) => {
             query = "",
             sortBy = "createdAt",
             sortType = "desc",
-            userId // Default to the authenticated user's ID
+            userId : queryUserId
         } = req.query;
 
+      const  userId = req.user?.id || queryUserId
 
 
 
+        
     
 
         
@@ -59,6 +85,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
                 { description: { $regex: query, $options: "i" } }
             ];
         }
+
 
         // Determine the sort order
         const sortOrder = sortType.toLowerCase() === "asc" ? 1 : -1;
@@ -123,6 +150,11 @@ const getAllVideos = asyncHandler(async (req, res) => {
         )
     
         const videos = await Video.aggregate(aggregationPipeline)
+
+        // Ensure frontend receives URL paths (e.g., "temp/foo.jpg") not absolute filesystem paths.
+        for (const v of videos) {
+            v.thumbnail = v.thumbnail ? toPublicUrlPath(v.thumbnail) : "";
+        }
         return res
         .status(200)
         .json(
@@ -133,7 +165,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
             )
         )
     } catch (error) {
-        throw new ApiError(400, error?.message || "Some error in getAllVideos")
+        throw new ApiError(400, error?.message.toString() || "Some error in getAllVideos")
         
     }
 
@@ -142,206 +174,53 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
 
 
-const getVideoDurationFromBuffer = async (fileBuffer) => {
-    const tmpFile = await tmp.file({
-        postfix: '.mp4' // Assuming the video file is in MP4 format
-    });
-
-    await fs.writeFile(tmpFile.path, fileBuffer);
-
-    return new Promise((resolve, reject) => {
-        const readableStream = new Readable();
-        readableStream.push(fileBuffer);
-        readableStream.push(null); // Signal end of the stream
-
-        ffmpeg.ffprobe(readableStream, (err, metadata) => {
-            if (err) {
-                console.error("Error retrieving video duration:", err);
-                return reject(new ApiError(500, "Failed to process video file"));
-            }
-            const duration = Math.floor(metadata.format.duration); // Duration in seconds
-            resolve(duration);
-        });
-    });
-};
-
-
-const checkVideoTitle = asyncHandler(async (req, res) => {
-    try {
-        const { title } = req.query;
-        const userId = req.user._id;
-
-        if (!title) {
-            throw new ApiError(400, "Title is required");
-        }
-
-        const existingVideo = await Video.findOne({ 
-            title: title.trim(), 
-            owner: userId 
-        });
-
-        return res.status(200).json(
-            new ApiResponse(200, { exists: !!existingVideo }, "Title check completed")
-        );
-    } catch (e) {
-        throw new ApiError(500, e.message || "Failed to check title");
-    }
-});
+import { addVideoToQueue } from "../queues/videoProcessing.queue.js";
 
 const publishAVideo = asyncHandler(async (req, res) => {
-    try {
-        const { title, description ,channelId} = req.body;
-        console.log("Request Body:", req.body);
-        
+    const { title, description } = req.body;
 
-        if (!title || !description) {
-            throw new ApiError(400, "Missing required fields: title, description, video file or thumbnail");
-        }
-        console.log("Request Files:", req.files);
-        const userId = req.user._id;
-
-        const channel = await User.findById(userId);
-        // console.log("THis is test", Channel.);
-        
-        console.log("Channel:", userId);
-        if(!channel ) {
-            throw new ApiError(403, "You are not authorized to publish videos on this channel");
-        }
-
-        // Remove: const f = require('fs').promises;
-
-        const videoFile = req.files?.videoFile?.[0];
-        const thumbnailFile = req.files?.thumbnail?.[0];
-
-        console.log("Video File:", videoFile);
-        console.log("Thumbnail File:", thumbnailFile);
-        
-
-
-
-        // Read video file buffer from disk
-        const videoFileBuffer = videoFile?.path
-            ? await fs.readFile(videoFile.path)
-            : null;
-
-        // Get duration from buffer
-        const duration = videoFileBuffer
-            ? await getVideoDurationFromBuffer(videoFileBuffer)
-            : 0;
-
-            
-            
-            const uploadedVideo = videoFile?.path
-            ? await uploadOnCloudinary(videoFile.path)
-            : null;
-            
-            const uploadedThumbnail = thumbnailFile?.path
-            ? await uploadOnCloudinary(thumbnailFile.path)
-            : null;
-            
-            console.log("Uploaded Video:", uploadedVideo);
-            console.log("Uploaded Thumbnail:", uploadedThumbnail);
-            console.log("Video Duration:", duration);
-        const videoPayload = {
-            title,
-            description,
-            videoFile: uploadedVideo ? uploadedVideo.secure_url : null,
-            thumbnail: uploadedThumbnail ? uploadedThumbnail.secure_url : null,
-            duration: duration || 0, // Default to 0 if duration cannot be determined
-        };
-
-        console.log("Video Payload:", videoPayload);
-
-        // Validation
-        const videoValidationSchema = Joi.object({
-            title: Joi.string().required(),
-            description: Joi.string().required(),
-            videoFile: Joi.string().uri().required(),
-            thumbnail: Joi.string().uri().required(),
-            duration: Joi.number().required(),
-        });
-
-        const { error } = videoValidationSchema.validate(videoPayload);
-        if (error) {
-            throw new ApiError(400, error.details[0].message);
-        }
-
-        // Check if the same video already exists
-        const existingVideo = await Video.findOne({ title, owner: req.user._id });
-
-        if (existingVideo) {
-            return res.status(409).json(new ApiResponse(409, {}, "Video with the same title already exists"));
-        }
-
-        let videoMetrics = null;
-        try {
-            videoMetrics = await extractVideoMetrics(videoFileBuffer);
-            console.log("Video Metrics Extracted:", videoMetrics);
-        } catch (metricsError) {
-            console.log("Failed to extract video metrics:", metricsError.message);
-            // Continue without metrics
-        }
-
-        // Create new video
-        const videoData = {
-            title,
-            description,
-            videoFiles: uploadedVideo.secure_url,
-            thumbnail: uploadedThumbnail.secure_url,
-            duration,
-            owner: req.user._id,
-            views: 0,
-            isPublished: true,
-        };
-
-        // Only add metrics if extraction was successful
-        if (videoMetrics) {
-            videoData.metrics = {
-                frameAnalysis: videoMetrics,
-                frameCount: videoMetrics.frameCount,
-                duration: videoMetrics.duration,
-                bitrate: videoMetrics.bitrate,
-                size: videoMetrics.size,
-                videoCodec: videoMetrics.videoCodec,
-                audioCodec: videoMetrics.audioCodec,
-                format: videoMetrics.format,
-                resolution: videoMetrics.resolution,
-                fps: videoMetrics.fps,
-                aspectRatio: videoMetrics.aspectRatio,
-                audioChannels: videoMetrics.audioChannels,
-                audioSampleRate: videoMetrics.audioSampleRate,
-                keyFrames: videoMetrics.keyFrames
-            };
-        }
-
-        const newVideo = await Video.create(videoData);
-
-        await newVideo.save();
-        console.log("New Video Created:", newVideo);
-
-        // Try to send Kafka event, but don't fail upload if Kafka is down
-        try {
-            await connectProducer();
-            await sendVideoEvent("video_published", {
-                id: newVideo._id,
-                title: newVideo.title,
-                description: newVideo.description,
-                owner: newVideo.owner
-            });
-            console.log("Video event sent to Kafka successfully");
-        } catch (kafkaError) {
-            console.log("Failed to send Kafka event (non-critical):", kafkaError.message);
-            // Continue without Kafka - video is already saved
-        }
-        
-        return res.status(201).json(
-            new ApiResponse(201, { video: newVideo }, "Video published successfully")
-        );
-
-    } catch (e) {
-        console.error("Video upload error:", e);
-        throw new ApiError(500, e.message || "Failed to publish video");
+    if (!title || !description) {
+        throw new ApiError(400, "Title and description are required.");
     }
+
+    const videoFileLocalPath = req.files?.videoFile?.[0]?.path;
+    const thumbnailLocalPath = req.files?.thumbnail?.[0]?.path;
+
+    if (!videoFileLocalPath) {
+        throw new ApiError(400, "Video file is required.");
+    }
+
+    // Create a new video document with a 'processing' status
+    const video = await Video.create({
+        title,
+        description,
+        videoFiles: toPublicDbPath(videoFileLocalPath), // Store under public/ so API can expose a URL path
+        thumbnail: thumbnailLocalPath ? toPublicDbPath(thumbnailLocalPath) : "",
+        owner: req.user._id,
+        duration: 0, // Will be updated by the worker
+        views: 0,
+        isPublished: true, // Published immediately so it shows on frontend
+        processingStatus: "processing", // Matches API/tests; worker will finalize to completed/failed
+    });
+
+    // Add video to the processing queue
+    try {
+        await addVideoToQueue(video._id, videoFileLocalPath);
+    } catch (err) {
+        // Queue (Redis) not available: fall back to serving the uploaded file directly.
+        await Video.findByIdAndUpdate(video._id, {
+            processingStatus: "completed",
+            videoFiles: toPublicDbPath(videoFileLocalPath),
+        });
+    }
+
+    return res.status(202).json(
+        new ApiResponse(
+            202,
+            { video },
+            "Video uploaded successfully and is now processing."
+        )
+    );
 });
 
 
@@ -361,6 +240,14 @@ const getVideoById = asyncHandler(async (req, res) => {
             },
             {
                 $lookup: {
+                    from: "likes",
+                    localField: "_id",
+                    foreignField: "video",
+                    as: "likes"
+                }
+            },
+            {
+                $lookup: {
                     from: "users", // Collection name for owners (e.g., users)
                     localField: "owner", // Field in the video document
                     foreignField: "_id", // Field in the user document
@@ -371,12 +258,19 @@ const getVideoById = asyncHandler(async (req, res) => {
                 $unwind: "$ownerDetails" // Unwind the owner details if it's an array
             },
             {
+                $addFields: {
+                    likesCount: { $size: "$likes" }
+                }
+            },
+            {
                 $project: {
                     _id: 1,
                     title: 1,
                     description: 1,
                     videoFiles: 1,
                     thumbnail: 1,
+                    processingStatus: 1,
+                    hlsMasterPlaylist: 1,
                     duration: 1,
                     views: 1,
                     isPublished: 1,
@@ -387,7 +281,8 @@ const getVideoById = asyncHandler(async (req, res) => {
                         username: "$ownerDetails.username",
                         fullName: "$ownerDetails.fullName",
                         avatar: "$ownerDetails.avatar"
-                    }
+                    },
+                    likesCount: 1
                 }
             }
         ]);
@@ -398,8 +293,23 @@ const getVideoById = asyncHandler(async (req, res) => {
 
         // Return single video object, not array
         const video = videos[0];
-        // Map videoFiles to videoFile for frontend compatibility
-        video.videoFile = video.videoFiles;
+
+        // Always expose an immediately playable MP4 path if it's web-accessible.
+        // HLS is only exposed once processing has completed.
+        const isReady = video.processingStatus === "completed";
+        video.videoFile = toPublicUrlPath(video.videoFiles) || "";
+        video.thumbnail = video.thumbnail ? toPublicUrlPath(video.thumbnail) : "";
+        video.hlsMasterPlaylist = isReady && video.hlsMasterPlaylist ? toPublicUrlPath(video.hlsMasterPlaylist) : "";
+
+        // If HLS points to a local file that doesn't exist, don't advertise it.
+        if (video.hlsMasterPlaylist && !/^https?:\/\//i.test(video.hlsMasterPlaylist)) {
+            const absolute = path.join(process.cwd(), "public", video.hlsMasterPlaylist);
+            if (!fs.existsSync(absolute)) {
+                video.hlsMasterPlaylist = "";
+            }
+        }
+        console.log("video data is sent to frontend",video);
+        
 
         return res
             .status(200)
@@ -630,6 +540,4 @@ export {
     togglePublishStatus,
     homepageVideos,
     addToWatchHistory,
-    triggerVideoWebhook,
-    checkVideoTitle
 }

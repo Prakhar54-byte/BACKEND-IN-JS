@@ -8,9 +8,9 @@ const app = express();
 app.use(cors({
     origin:  "http://localhost:3000",  // Ensure CORS Origin is correct
     credentials: true, 
-    allowedHeaders: ['Content-Type', 'Authorization','x-access-token'],
+    allowedHeaders: ['Content-Type', 'Authorization','x-access-token', 'Range'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    exposedHeaders:['x-access-token', 'Content-Type', 'Authorization']
+    exposedHeaders:['x-access-token', 'Content-Type', 'Authorization', 'Content-Range', 'Accept-Ranges', 'Content-Length']
 }));
 
 
@@ -25,13 +25,25 @@ app.get("/ping", (req, res) => {
 // app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // app.use(express.json({ limit: "10mb" }));
 
-app.use(express.urlencoded({ limit: "10000mb", extended: true }));
-app.use(express.json({ limit: "10000mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
-console.log("Body size limit set to 10mb");
+
 
 // Serve static files from the 'public' folder
-app.use(express.static('public'));
+// Ensure correct MIME types for HLS assets.
+app.use(
+  express.static('public', {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.m3u8')) {
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+      }
+      if (filePath.endsWith('.ts')) {
+        res.setHeader('Content-Type', 'video/mp2t');
+      }
+    },
+  })
+);
 console.log("Static files served from the 'public' folder");
 
 // Set up cookie parser
@@ -44,7 +56,7 @@ import userRouter from "./routers/user.routes.js";
 // Use routes
 app.use("/api/v1/users", userRouter);
 
-console.log(`App is running on port ${process.env.PORT || 8080}  `);
+console.log(`App is running on port ${process.env.PORT }  `);
 
 
 import { User } from './models/user.model.js';

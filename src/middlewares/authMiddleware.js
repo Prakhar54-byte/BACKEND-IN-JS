@@ -3,6 +3,8 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import jwt from "jsonwebtoken"
 import { User } from "../models/user.model.js";
 
+const isTestEnv = Boolean(process.env.JEST_WORKER_ID) || process.env.NODE_ENV === 'test';
+
 export const verifyJWT = asyncHandler(async(req, _, next) => {
     try {
 
@@ -20,13 +22,13 @@ export const verifyJWT = asyncHandler(async(req, _, next) => {
     }
 
     if (!token || token === "null" || token === "undefined") {
-      console.error("Token missing in request");
+      if (!isTestEnv) console.warn("Token missing in request");
       throw new ApiError(401, "Unauthorized request - Token missing");
     }
 
     // Additional token format validation
     if (typeof token !== "string" || !token.includes(".")) {
-      console.error("Malformed token:", token);
+      if (!isTestEnv) console.warn("Malformed token in request");
       throw new ApiError(401, "Invalid token format");
     }
 

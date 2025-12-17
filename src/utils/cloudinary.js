@@ -48,22 +48,34 @@
 import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 
+const isTestEnv = Boolean(process.env.JEST_WORKER_ID) || process.env.NODE_ENV === 'test';
 
-cloudinary.config({ 
-  
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
-  api_key: process.env.CLOUDINARY_API_KEY, 
-  api_secret: process.env.CLOUDINARY_API_SECRET ,
-  timeout: 120000 // Set a timeout of 60 seconds for upload operations
-});
+let configured = false;
+const ensureConfigured = () => {
+  if (configured) return;
+  configured = true;
 
-cloudinary.api.ping()
-    .then(() => console.log("Cloudinary connection successful"))
-    .catch(err => console.error("Error connecting to Cloudinary:", err));
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    timeout: 120000,
+  });
+
+  // Avoid async ping/log spam during tests or at import time.
+  if (!isTestEnv && process.env.CLOUDINARY_PING === 'true') {
+    cloudinary.api
+      .ping()
+      .then(() => console.log('Cloudinary connection successful'))
+      .catch((err) => console.error('Error connecting to Cloudinary:', err));
+  }
+};
 
 const uploadOnCloudinary = async (localFilePath) => {
   try {
     if (!localFilePath) return null;
+
+    ensureConfigured();
 
     const response = await cloudinary.uploader.upload(localFilePath, {
       resource_type: "auto"
@@ -95,6 +107,8 @@ const deleteFromCloudinary = async (publicId) => {
       console.warn("No publicId provided for deletion");
       return false;
     }
+
+    ensureConfigured();
 
     await cloudinary.uploader.destroy(publicId);
     return true;

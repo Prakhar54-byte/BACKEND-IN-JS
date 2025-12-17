@@ -45,6 +45,28 @@ const videoSchema = new Schema(
     hlsMasterPlaylist: {
       type: String, // URL to master.m3u8
     },
+    // Animated WebP preview for homepage hover
+    previewAnimationUrl: {
+      type: String,
+    },
+    // Visual audio waveform image URL
+    waveformUrl: {
+      type: String,
+    },
+    // Seeking previews (sprite sheet)
+    spriteSheetUrl: {
+      type: String,
+    },
+    spriteSheetVttUrl: {
+      type: String,
+    },
+    // Auto-detected intro/outro times
+    introStartTime: {
+      type: Number,
+    },
+    introEndTime: {
+      type: Number,
+    },
     // Multiple quality variants
     variants: [{
       quality: {
