@@ -10,9 +10,15 @@ import { title } from "process"
 import { Channel } from "../models/channel.model.js" 
 import fs from "fs"
 import path from "path"
+import { fileURLToPath } from 'url';
 // import { log } from "console"
 
 // import { User } from "../models/user.model.js"
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const backendRoot = path.resolve(__dirname, '..', '..');
+const publicDir = path.join(backendRoot, 'public');
 
 const toPublicUrlPath = (inputPath) => {
     if (!inputPath || typeof inputPath !== "string") return inputPath;
@@ -175,12 +181,19 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
 
 import { addVideoToQueue } from "../queues/videoProcessing.queue.js";
+import { log } from "console"
 
 const publishAVideo = asyncHandler(async (req, res) => {
     const { title, description } = req.body;
 
     if (!title || !description) {
         throw new ApiError(400, "Title and description are required.");
+    }
+
+    // Check if user has a channel
+    const channel = await Channel.findOne({ owner: req.user._id });
+    if (!channel) {
+        throw new ApiError(403, "You must have a channel to upload videos.");
     }
 
     const videoFileLocalPath = req.files?.videoFile?.[0]?.path;
@@ -271,6 +284,11 @@ const getVideoById = asyncHandler(async (req, res) => {
                     thumbnail: 1,
                     processingStatus: 1,
                     hlsMasterPlaylist: 1,
+                    waveformUrl: 1,
+                    spriteSheetUrl: 1,
+                    spriteSheetVttUrl: 1,
+                    introStartTime: 1,
+                    introEndTime: 1,
                     duration: 1,
                     views: 1,
                     isPublished: 1,
@@ -299,16 +317,27 @@ const getVideoById = asyncHandler(async (req, res) => {
         const isReady = video.processingStatus === "completed";
         video.videoFile = toPublicUrlPath(video.videoFiles) || "";
         video.thumbnail = video.thumbnail ? toPublicUrlPath(video.thumbnail) : "";
+
+        video.waveformUrl = video.waveformUrl ? toPublicUrlPath(video.waveformUrl) : "";
+        video.spriteSheetUrl = video.spriteSheetUrl ? toPublicUrlPath(video.spriteSheetUrl) : "";
+        video.spriteSheetVttUrl = video.spriteSheetVttUrl ? toPublicUrlPath(video.spriteSheetVttUrl) : "";
+
+        
+
+        
+
         video.hlsMasterPlaylist = isReady && video.hlsMasterPlaylist ? toPublicUrlPath(video.hlsMasterPlaylist) : "";
 
         // If HLS points to a local file that doesn't exist, don't advertise it.
         if (video.hlsMasterPlaylist && !/^https?:\/\//i.test(video.hlsMasterPlaylist)) {
-            const absolute = path.join(process.cwd(), "public", video.hlsMasterPlaylist);
+            const absolute = path.join(publicDir, video.hlsMasterPlaylist);
             if (!fs.existsSync(absolute)) {
                 video.hlsMasterPlaylist = "";
             }
+            console.log("Is video is playing", fs.existsSync(absolute));
+            
         }
-        console.log("video data is sent to frontend",video);
+        // Avoid dumping full video doc in logs
         
 
         return res
@@ -374,10 +403,12 @@ const deleteVideo = asyncHandler(async (req, res) => {
      }
  
      const video = await Video.findOneAndDelete({
-         _id: videoId
+         _id: videoId,
+         owner: req.user._id
      });
+     
      if(!video){
-         throw new ApiError(404, "Video not found")
+         throw new ApiError(404, "Video not found or you are not authorized to delete this video")
      }
      return res
      .status(200)
@@ -471,6 +502,11 @@ const homepageVideos = asyncHandler(async (req, res) => {
                 }
             }}
         ]);
+
+        // Normalize asset paths for the frontend (avoid leaking "public/" filesystem prefix).
+        for (const v of videos) {
+            v.thumbnail = v.thumbnail ? toPublicUrlPath(v.thumbnail) : "";
+        }
 
         // Return the videos
         return res.status(200).json(

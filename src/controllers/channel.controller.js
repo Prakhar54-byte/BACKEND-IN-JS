@@ -7,10 +7,9 @@ import { User } from "../models/user.model.js";
 // import { upload } from "../middlewares/multer.middleware";
 
 import mongoose from "mongoose";
-import { log } from "console";
 // import { log } from "node:console";
 
- const createChannel= asyncHandler(async(requestAnimationFrame,res)=>{
+const createChannel= asyncHandler(async(req = requestAnimationFrame,res)=>{
     const {name,description} = requestAnimationFrame.body;
     const userId = requestAnimationFrame.user._id;
 
@@ -36,25 +35,27 @@ import { log } from "console";
     }
     const avatarPath = requestAnimationFrame.file ? requestAnimationFrame.file.path : user.avatar;
     const bannerPath = requestAnimationFrame.banner ? requestAnimationFrame.banner.path : "";
-     if(!bannerPath){
-        // channel.banner = bannerPath;
-        user.coverImage = bannerPath;
-        await user.save();
-    }
+    //  if(!bannerPath){
+    // //     // channel.banner = bannerPath;
+    // //     user.coverImage = bannerPath;
+    // //     await user.save();
+    // // }
     console.log("Avatar Path:", avatarPath)
-    console.log("Banner Path:", bannerPath);
+    // console.log("Banner Path:", bannerPath);
     
     if(!avatarPath && !bannerPath){
         throw new ApiError(400,"At least one of avatar or banner must be provided");
     }
 
+    // console.log("RequestAnimation",requestAnimationFrame.path);
     const channel = await Channel.create({
         name,
         description,
         owner: userId,
         avatar: requestAnimationFrame.file ? requestAnimationFrame.file.path : "",
-        banner: requestAnimationFrame.file ? requestAnimationFrame.banner.path : ""
+        // banner: requestAnimationFrame.file ? requestAnimationFrame.file.path : ""
     });
+    
     
    
 
@@ -202,6 +203,19 @@ import { log } from "console";
 })
 
 
+ const getUserChannel = asyncHandler(async(req,res)=>{
+    const userId = req.user.id;
+
+    const channel = await Channel.findOne({ owner: userId });
+
+    if(!channel){
+        // Return 200 with null if no channel, so frontend can handle it gracefully
+        return res.status(200).json(new ApiResponse(200, null, "User has no channel"));
+    }
+
+    return res.status(200).json(new ApiResponse(200,channel,"User channel fetched successfully"));
+})
+
 export {
     createChannel,
     updateChannel,
@@ -210,6 +224,7 @@ export {
     getChannelSubscribers,
     toggleSubscription,
     getUserChannels,
+    getUserChannel,
     uploadChannelAvatar,
     uploadChannelBanner
 };

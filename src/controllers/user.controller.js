@@ -419,7 +419,6 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 
 const getCurrentUser = asyncHandler(async (req, res) => {
   try {
-    console.log("Request User in getCurrentUser:", req.user);
     
 
     if(!req.user || !req.user._id){
@@ -427,12 +426,10 @@ const getCurrentUser = asyncHandler(async (req, res) => {
     }
     const user = await User.findById(req.user._id).select("-password -refreshToken")
     .lean();
-    console.log("User in getCurrentUser", user);
     
     if(!user){
       throw new ApiError(404, "User not found");
     }
-    console.log("This is user", user);
     return res.status(200).json(new ApiResponse(200, req.user, "User found"));
   } catch (error) {
     throw new ApiError(400, error?.message || "Some error getCurrentUser");

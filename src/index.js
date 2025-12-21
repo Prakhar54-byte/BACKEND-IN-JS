@@ -7,7 +7,14 @@ import { DB_NAME} from './constants.js'
 import connectDB from "./db/index.js";
 import {app} from './app.js'
 // import {app} from './app.js'
-dotenv.config({ path:"../.env"});
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Always load BACKEND/.env, regardless of the directory the process is started from.
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 
 const DEFAULT_PORT = process.env.PORT ? Number(process.env.PORT) : 8080;

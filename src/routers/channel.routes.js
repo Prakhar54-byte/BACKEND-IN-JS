@@ -8,6 +8,7 @@ import {
   getChannelSubscribers,
   toggleSubscription,
   getUserChannels,
+  getUserChannel,
   uploadChannelAvatar,
   uploadChannelBanner
 } from "../controllers/channel.controller.js";
@@ -30,6 +31,9 @@ router.get("/:channelId", getChannelProfile);
 
 // Get all channels owned by the authenticated user
 router.get("/user/me", verifyJWT, getUserChannels);
+
+// Get the single channel owned by the authenticated user (for upload checks)
+router.get("/user/current", verifyJWT, getUserChannel);
 
 // Get subscribers of a channel (anyone)
 router.get("/:channelId/subscribers", getChannelSubscribers);

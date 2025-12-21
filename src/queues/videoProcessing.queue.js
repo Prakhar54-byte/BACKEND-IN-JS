@@ -1,9 +1,16 @@
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
-import { transcodeVideo, generateHLSPlaylist, extractVideoMetadata } from '../services/videoProcessing.service.js';
+import { transcodeVideo, generateHLSPlaylist, extractVideoMetadata, generateWaveformImage, generateSpriteSheetAndVtt } from '../services/videoProcessing.service.js';
 import { Video } from '../models/video.model.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const backendRoot = path.resolve(__dirname, '..', '..');
+const publicRootDir = path.join(backendRoot, 'public');
 
 const isTestEnv = Boolean(process.env.JEST_WORKER_ID) || process.env.NODE_ENV === 'test';
 
@@ -28,6 +35,8 @@ const createRedisConnection = () => {
         console.error('[redis] connection error:', err?.message || err);
     });
 
+    
+
     return redis;
 };
 
@@ -51,18 +60,59 @@ const videoProcessingWorker = redisConnection
         await transcodeVideo(videoFileLocalPath, outputPath, '720p');
 
         // 3. (Optional) Generate HLS playlist
-        const hlsOutputDir = `public/temp/hls-${videoId}`;
+        const hlsOutputDir = `public/hls-${videoId}`;
         const hlsPlaylist = await generateHLSPlaylist(outputPath, hlsOutputDir);
+
+        const publicRoot = publicRootDir;
+        const toPublicRel = (p) => {
+            if (!p || typeof p !== 'string') return p;
+            const abs = path.isAbsolute(p) ? p : path.join(backendRoot, p);
+            const rel = path.relative(publicRoot, abs);
+            return rel.split(path.sep).join('/');
+        };
 
         // 4. Extract metadata
         const metadata = await extractVideoMetadata(outputPath);
 
+        // 4.1 Generate waveform image (optional UI feature)
+        const waveformPath = `public/temp/waveform-${videoId}.png`;
+        let waveformUrl;
+        try {
+            await generateWaveformImage(outputPath, waveformPath, { width: 1200, height: 120 });
+            waveformUrl = toPublicRel(waveformPath);
+        } catch (e) {
+            console.warn(`Waveform generation failed for video ${videoId}:`, e?.message || e);
+        }
+
+        // 4.2 Generate sprite sheet + VTT for hover/scrub thumbnails
+        const spritesDir = path.join(publicRoot, 'temp', `sprites-${videoId}`);
+        let spriteSheetUrl;
+        let spriteSheetVttUrl;
+        try {
+            const result = await generateSpriteSheetAndVtt(outputPath, spritesDir, {
+                intervalSeconds: 10,
+                tileWidth: 160,
+                tileHeight: 90,
+                maxThumbnails: 100,
+            });
+            spriteSheetUrl = toPublicRel(result.spriteSheetPath);
+            spriteSheetVttUrl = toPublicRel(result.vttPath);
+        } catch (e) {
+            console.warn(`Sprite/VTT generation failed for video ${videoId}:`, e?.message || e);
+        }
+
         // 5. Update video document with processed data
         await Video.findByIdAndUpdate(videoId, {
             videoFiles: outputPath,
-            hlsMasterPlaylist: hlsPlaylist.masterPlaylist,
+            hlsMasterPlaylist: toPublicRel(hlsPlaylist.masterPlaylist),
             duration: metadata.duration,
             processingStatus: 'completed',
+            ...(waveformUrl ? { waveformUrl } : {}),
+            ...(spriteSheetUrl ? { spriteSheetUrl } : {}),
+            ...(spriteSheetVttUrl ? { spriteSheetVttUrl } : {}),
+            // Safe defaults so frontend doesn't see undefined.
+            introStartTime: 0,
+            introEndTime: 0,
             // ... update other metadata fields
         });
 

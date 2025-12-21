@@ -131,6 +131,127 @@ export const generateThumbnailStrip = (inputPath, outputDir, count = 10) => {
 };
 
 /**
+ * Generate a visual audio waveform PNG.
+ *
+ * Uses FFmpeg filter `showwavespic` to render a single frame image.
+ */
+export const generateWaveformImage = (inputPath, outputPath, options = {}) => {
+  const width = Number(options.width || 1200);
+  const height = Number(options.height || 120);
+
+  return new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      // showwavespic consumes audio and outputs a video frame
+      .complexFilter([`showwavespic=s=${width}x${height}`])
+      .outputOptions([
+        '-frames:v 1',
+        '-y',
+      ])
+      .output(outputPath)
+      .on('end', () => resolve(outputPath))
+      .on('error', reject)
+      .run();
+  });
+};
+
+const formatVttTimestamp = (seconds) => {
+  const totalMs = Math.max(0, Math.round(Number(seconds || 0) * 1000));
+  const ms = totalMs % 1000;
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const s = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const m = totalMinutes % 60;
+  const h = Math.floor(totalMinutes / 60);
+
+  const pad = (n, width = 2) => String(n).padStart(width, '0');
+  return `${pad(h)}:${pad(m)}:${pad(s)}.${pad(ms, 3)}`;
+};
+
+/**
+ * Generate a sprite sheet image + WebVTT file for hover/scrub thumbnails.
+ *
+ * The VTT references the sprite image using `#xywh=x,y,w,h` fragments.
+ */
+export const generateSpriteSheetAndVtt = async (inputPath, outputDir, options = {}) => {
+  const intervalSeconds = Math.max(1, Number(options.intervalSeconds || 10));
+  const tileWidth = Math.max(16, Number(options.tileWidth || 160));
+  const tileHeight = Math.max(16, Number(options.tileHeight || 90));
+  const maxThumbnails = Math.max(1, Number(options.maxThumbnails || 100));
+
+  const absoluteOutDir = path.isAbsolute(outputDir) ? outputDir : path.join(process.cwd(), outputDir);
+  await fs.mkdir(absoluteOutDir, { recursive: true });
+
+  const metadata = await extractVideoMetadata(inputPath);
+  const duration = Math.max(0, Number(metadata.duration || 0));
+
+  // Include a frame at t=0, then every intervalSeconds.
+  const estimated = duration > 0 ? Math.floor(duration / intervalSeconds) + 1 : 1;
+  const count = Math.max(1, Math.min(maxThumbnails, estimated));
+
+  const columns = Math.ceil(Math.sqrt(count));
+  const rows = Math.ceil(count / columns);
+
+  const spriteSheetPath = path.join(absoluteOutDir, 'spritesheet.jpg');
+  const vttPath = path.join(absoluteOutDir, 'sprites.vtt');
+
+  const vf = [
+    // Sample frames at a fixed cadence.
+    `fps=1/${intervalSeconds}`,
+    // Create uniform tiles with padding to avoid aspect distortion.
+    `scale=${tileWidth}:${tileHeight}:force_original_aspect_ratio=decrease`,
+    `pad=${tileWidth}:${tileHeight}:(ow-iw)/2:(oh-ih)/2`,
+    `tile=${columns}x${rows}`,
+  ].join(',');
+
+  await new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      .outputOptions([
+        '-vf', vf,
+        '-frames:v 1',
+        '-q:v 3',
+        '-y',
+      ])
+      .output(spriteSheetPath)
+      .on('end', resolve)
+      .on('error', reject)
+      .run();
+  });
+
+  // Build a simple VTT where each cue covers [t, t+interval).
+  const spriteFileName = path.basename(spriteSheetPath);
+  const cues = [];
+  for (let i = 0; i < count; i += 1) {
+    const start = i * intervalSeconds;
+    let end = (i + 1) * intervalSeconds;
+    if (duration > 0) end = Math.min(end, duration);
+    if (end <= start) end = start + intervalSeconds;
+
+    const col = i % columns;
+    const row = Math.floor(i / columns);
+    const x = col * tileWidth;
+    const y = row * tileHeight;
+
+    cues.push(
+      `${formatVttTimestamp(start)} --> ${formatVttTimestamp(end)}\n${spriteFileName}#xywh=${x},${y},${tileWidth},${tileHeight}`
+    );
+  }
+
+  const vttContent = `WEBVTT\n\n${cues.join('\n\n')}\n`;
+  await fs.writeFile(vttPath, vttContent);
+
+  return {
+    spriteSheetPath,
+    vttPath,
+    intervalSeconds,
+    tileWidth,
+    tileHeight,
+    columns,
+    rows,
+    count,
+  };
+};
+
+/**
  * Transcode video to specific quality preset
  */
 export const transcodeVideo = (inputPath, outputPath, preset = '720p') => {
@@ -167,7 +288,7 @@ export const transcodeVideo = (inputPath, outputPath, preset = '720p') => {
 /**
  * Create HLS (HTTP Live Streaming) playlist with multiple quality variants
  */
-export const generateHLSPlaylist = async (inputPath, outputDir, qualities = ['240p', '480p', '720p', '1080p']) => {
+export const generateHLSPlaylist = async (inputPath, outputDir, qualities = ['240p', '480p', '720p', ]) => {
   try {
     await fs.mkdir(outputDir, { recursive: true });
     
@@ -403,6 +524,8 @@ export default {
   extractVideoMetadata,
   generateThumbnail,
   generateThumbnailStrip,
+  generateWaveformImage,
+  generateSpriteSheetAndVtt,
   transcodeVideo,
   generateHLSPlaylist,
   compressVideo,

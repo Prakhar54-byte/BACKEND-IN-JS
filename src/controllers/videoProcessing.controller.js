@@ -6,6 +6,10 @@ import videoProcessingService from "../services/videoProcessing.service.js";
 import { uploadOnCloudinary, deleteFromCloudinary } from "../utils/cloudinary.js";
 import path from "path";
 import { promises as fs } from "fs";
+import { createWriteStream } from "fs";
+import { pipeline } from "stream/promises";
+import { Readable } from "stream";
+import { fileURLToPath } from 'url';
 
 // Optional: Import Kafka producer if available
 let sendVideoEvent = async () => {};
@@ -15,6 +19,11 @@ try {
 } catch (error) {
   console.log("Kafka producer not available, events will not be sent");
 }
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const backendRoot = path.resolve(__dirname, '..', '..');
+const publicRootDir = path.join(backendRoot, 'public');
 
 /**
  * Trigger video processing after upload
@@ -57,6 +66,55 @@ export const processUploadedVideo = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, { status: "processing" }, "Video processing started"));
 });
 
+const isRemoteUrl = (value) => typeof value === "string" && /^https?:\/\//i.test(value);
+
+const toPosixPath = (p) => (typeof p === "string" ? p.replace(/\\/g, "/") : p);
+
+const toPublicRel = (publicRoot, absolutePath) =>
+  path.relative(publicRoot, absolutePath).split(path.sep).join("/");
+
+async function resolveInputVideoPath({ videoFiles, workDir, publicRoot }) {
+  const raw = toPosixPath(videoFiles);
+  if (!raw) throw new ApiError(400, "Video file path is missing");
+
+  // If it's a remote URL (e.g., Cloudinary), download it to a local temp file.
+  if (isRemoteUrl(raw)) {
+    const response = await fetch(raw);
+    if (!response.ok || !response.body) {
+      throw new ApiError(400, `Failed to download remote video: ${response.status}`);
+    }
+
+    const localPath = path.join(workDir, "input.mp4");
+    const nodeStream = Readable.fromWeb(response.body);
+    await pipeline(nodeStream, createWriteStream(localPath));
+    return localPath;
+  }
+
+  // DB may store:
+  // - "public/..." (db path)
+  // - "temp/..." or "hls-..." (public-relative)
+  // - absolute filesystem paths
+  const normalized = raw.replace(/^\//, "");
+
+  let absolutePath;
+  if (path.isAbsolute(raw)) {
+    absolutePath = raw;
+  } else if (normalized.startsWith("public/")) {
+    absolutePath = path.join(process.cwd(), normalized);
+  } else {
+    // Treat as public-relative by default.
+    absolutePath = path.join(publicRoot, normalized);
+  }
+
+  try {
+    await fs.access(absolutePath);
+  } catch {
+    throw new ApiError(400, `Video file not found on disk: ${absolutePath}`);
+  }
+
+  return absolutePath;
+}
+
 /**
  * Background processing function
  */
@@ -65,17 +123,26 @@ async function processVideoInBackground(videoId, videoUrl) {
     const video = await Video.findById(videoId);
     if (!video) return;
 
-    // For now, we'll assume the video is already uploaded to a temporary location
-    // In production, you'd download from Cloudinary or use the local file
-    const tempDir = path.join(process.cwd(), "public", "temp", `video_${videoId}`);
-    await fs.mkdir(tempDir, { recursive: true });
+    const publicRoot = publicRootDir;
+    const workDir = path.join(publicRoot, "temp", `work-video_${videoId}`);
+    await fs.mkdir(workDir, { recursive: true });
+
+    // Outputs that the frontend needs must be stored in a persistent public folder.
+    const thumbsDir = path.join(publicRoot, "temp", `thumbs-${videoId}`);
+    await fs.mkdir(thumbsDir, { recursive: true });
 
     // You would download the video here if needed
     // const inputPath = path.join(tempDir, "input.mp4");
     // For this example, we'll use the uploaded file path
 
-    // 1. Extract metadata
-    const inputPath = video.videoFiles; // Adjust based on your file storage
+    // 1. Resolve local input path (download if needed)
+    const inputPath = await resolveInputVideoPath({
+      videoFiles: videoUrl || video.videoFiles,
+      workDir,
+      publicRoot,
+    });
+
+    // 2. Extract metadata
     const metadata = await videoProcessingService.extractVideoMetadata(inputPath);
 
     video.metadata = {
@@ -91,62 +158,121 @@ async function processVideoInBackground(videoId, videoUrl) {
       originalBitrate: metadata.bitrate,
     };
 
-    // 2. Generate thumbnails
-    const thumbnailDir = path.join(tempDir, "thumbnails");
-    await fs.mkdir(thumbnailDir, { recursive: true });
-
-    const mainThumbnailPath = path.join(thumbnailDir, "main.jpg");
+    // 3. Generate thumbnails (persist in public/)
+    const mainThumbnailPath = path.join(thumbsDir, "main.jpg");
     await videoProcessingService.generateThumbnail(inputPath, mainThumbnailPath);
 
-    // Upload main thumbnail to Cloudinary
-    const thumbnailUpload = await uploadOnCloudinary(mainThumbnailPath);
-    video.thumbnail = thumbnailUpload.url;
+    // Prefer Cloudinary if configured, else serve locally.
+    let mainThumbUrl;
+    try {
+      const upload = await uploadOnCloudinary(mainThumbnailPath);
+      mainThumbUrl = upload?.url;
+    } catch {
+      mainThumbUrl = undefined;
+    }
+    video.thumbnail = mainThumbUrl || toPublicRel(publicRoot, mainThumbnailPath);
 
-    // 3. Generate thumbnail strip for scrubbing
-    const thumbnailStrip = await videoProcessingService.generateThumbnailStrip(
-      inputPath,
-      thumbnailDir,
-      10
-    );
+    // 4. Generate thumbnail strip for scrubbing
+    const thumbnailStrip = await videoProcessingService.generateThumbnailStrip(inputPath, thumbsDir, 10);
 
-    // Upload thumbnail strip
     video.thumbnailStrip = [];
     for (const thumb of thumbnailStrip) {
-      const thumbUpload = await uploadOnCloudinary(thumb.path);
+      let thumbUrl;
+      try {
+        const upload = await uploadOnCloudinary(thumb.path);
+        thumbUrl = upload?.url;
+      } catch {
+        thumbUrl = undefined;
+      }
+
       video.thumbnailStrip.push({
         timestamp: thumb.timestamp,
-        url: thumbUpload.url,
+        url: thumbUrl || toPublicRel(publicRoot, thumb.path),
       });
     }
 
-    // 4. Generate HLS playlist with multiple qualities
-    const hlsDir = path.join(tempDir, "hls");
+    // 4.5 Generate waveform image (optional UI feature)
+    const waveformPath = path.join(publicRoot, "temp", `waveform-${videoId}.png`);
+    let waveformUrl;
+    try {
+      await videoProcessingService.generateWaveformImage(inputPath, waveformPath, { width: 1200, height: 120 });
+      waveformUrl = toPublicRel(publicRoot, waveformPath);
+    } catch (e) {
+      console.warn(`Waveform generation failed for video ${videoId}:`, e?.message || e);
+      waveformUrl = undefined;
+    }
+
+    // 4.6 Generate sprite sheet + VTT for hover/scrub thumbnails (optional UI feature)
+    const spritesDir = path.join(publicRoot, "temp", `sprites-${videoId}`);
+    let spriteSheetUrl;
+    let spriteSheetVttUrl;
+    try {
+      const result = await videoProcessingService.generateSpriteSheetAndVtt(inputPath, spritesDir, {
+        intervalSeconds: 10,
+        tileWidth: 160,
+        tileHeight: 90,
+        maxThumbnails: 100,
+      });
+      spriteSheetUrl = toPublicRel(publicRoot, result.spriteSheetPath);
+      spriteSheetVttUrl = toPublicRel(publicRoot, result.vttPath);
+    } catch (e) {
+      console.warn(`Sprite/VTT generation failed for video ${videoId}:`, e?.message || e);
+      spriteSheetUrl = undefined;
+      spriteSheetVttUrl = undefined;
+    }
+
+    // 5. Generate HLS playlist with multiple qualities into a persistent public folder
+    const hlsDir = path.join(publicRoot, `hls-${videoId}`);
     const hlsResult = await videoProcessingService.generateHLSPlaylist(
       inputPath,
       hlsDir,
       ["240p", "480p", "720p", "1080p"]
     );
 
-    // Upload HLS files to Cloudinary or your CDN
-    // For now, we'll just store the local paths
-    // In production, upload all .m3u8 and .ts files to cloud storage
+    // Save master playlist as public-relative path
+    video.hlsMasterPlaylist = toPublicRel(publicRoot, hlsResult.masterPlaylist);
 
-    video.hlsMasterPlaylist = hlsResult.masterPlaylist; // Update with cloud URL
-
-    // 5. Generate quality variants
+    // 5. Generate quality variants and collect .ts segment URLs
     video.variants = [];
     for (const variant of hlsResult.variants) {
+      const variantDir = path.dirname(variant.playlist);
+      const files = await fs.readdir(variantDir);
+      const tsSegments = files
+        .filter((f) => f.endsWith('.ts'))
+        .sort()
+        .map((f) => {
+          const abs = path.join(variantDir, f);
+          return toPublicRel(publicRoot, abs);
+        });
+
       video.variants.push({
         quality: variant.quality,
-        url: variant.playlist, // Update with cloud URL
+        url: toPublicRel(publicRoot, variant.playlist),
         resolution: variant.resolution,
         bitrate: variant.bandwidth.toString(),
-        size: 0, // Calculate from files
+        size: 0, // TODO: Optionally calculate combined size of segments
+        segments: tsSegments,
       });
     }
 
     // 6. Update status
     video.processingStatus = "completed";
+    if (waveformUrl) {
+      video.waveformUrl = waveformUrl;
+    }
+
+    if (spriteSheetUrl) {
+      video.spriteSheetUrl = spriteSheetUrl;
+    }
+    if (spriteSheetVttUrl) {
+      video.spriteSheetVttUrl = spriteSheetVttUrl;
+    }
+
+    // Safe defaults so frontend doesn't see undefined.
+    // (Skip-intro stays effectively disabled unless values are set meaningfully.)
+    if (video.introStartTime == null) video.introStartTime = 0;
+    if (video.introEndTime == null) video.introEndTime = 0;
+
     await video.save();
 
     // Send completion event
@@ -156,8 +282,8 @@ async function processVideoInBackground(videoId, videoUrl) {
       thumbnails: video.thumbnailStrip.length,
     });
 
-    // Cleanup temp directory
-    await fs.rm(tempDir, { recursive: true, force: true });
+    // Cleanup work directory only (thumbnails + HLS are kept for serving)
+    await fs.rm(workDir, { recursive: true, force: true });
   } catch (error) {
     console.error("Video processing error:", error);
 
@@ -187,23 +313,48 @@ export const generateThumbnailAtTime = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Video not found");
   }
 
-  const tempDir = path.join(process.cwd(), "public", "temp");
+  const publicRoot = path.join(process.cwd(), "public");
+  const tempDir = path.join(publicRoot, "temp");
   await fs.mkdir(tempDir, { recursive: true });
+
+  // Resolve local input path (download if needed)
+  const workDir = path.join(tempDir, `work-thumb_${videoId}_${Date.now()}`);
+  await fs.mkdir(workDir, { recursive: true });
+  const inputPath = await resolveInputVideoPath({
+    videoFiles: video.videoFiles,
+    workDir,
+    publicRoot,
+  });
 
   const outputPath = path.join(tempDir, `thumb_${videoId}_${Date.now()}.jpg`);
 
   // Generate thumbnail
-  await videoProcessingService.generateThumbnail(video.videoFiles, outputPath, timestamp);
+  await videoProcessingService.generateThumbnail(inputPath, outputPath, timestamp);
 
-  // Upload to Cloudinary
-  const uploadResult = await uploadOnCloudinary(outputPath);
+  // Prefer Cloudinary if configured, else serve locally
+  let thumbnailUrl;
+  try {
+    const uploadResult = await uploadOnCloudinary(outputPath);
+    thumbnailUrl = uploadResult?.url;
+  } catch {
+    thumbnailUrl = undefined;
+  }
 
-  // Cleanup
-  await fs.unlink(outputPath);
+  // Cleanup only the work dir; keep outputPath if serving locally
+  await fs.rm(workDir, { recursive: true, force: true });
+  if (thumbnailUrl) {
+    await fs.unlink(outputPath);
+  }
 
   return res
     .status(200)
-    .json(new ApiResponse(200, { thumbnail: uploadResult.url }, "Thumbnail generated"));
+    .json(
+      new ApiResponse(
+        200,
+        { thumbnail: thumbnailUrl || toPublicRel(publicRoot, outputPath) },
+        "Thumbnail generated"
+      )
+    );
 });
 
 /**

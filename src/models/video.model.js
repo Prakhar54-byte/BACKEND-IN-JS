@@ -77,6 +77,8 @@ const videoSchema = new Schema(
       resolution: String,
       bitrate: String,
       size: Number,
+      // List of public URLs to .ts HLS segments for this variant
+      segments: [String],
     }],
     // Thumbnail strip for video scrubbing
     thumbnailStrip: [{

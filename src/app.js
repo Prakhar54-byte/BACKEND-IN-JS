@@ -1,12 +1,26 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const app = express();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const backendRoot = path.resolve(__dirname, '..');
+const publicDir = path.join(backendRoot, 'public')
+
+;
+
+// For development/debugging: avoid conditional 304s that hide actual payload sizes.
+// (HLS manifests are small by design; segments carry the bulk of data.)
+app.set('etag', false);
+
 // Set up CORS
 app.use(cors({
-    origin:  "http://localhost:3000",  // Ensure CORS Origin is correct
+    origin:  "http://localhost:3000" ,  // Ensure CORS Origin is correct
     credentials: true, 
     allowedHeaders: ['Content-Type', 'Authorization','x-access-token', 'Range'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -28,18 +42,55 @@ app.get("/ping", (req, res) => {
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// Avoid caching API responses (prevents confusing 304s for XHR/fetch).
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 
 
 // Serve static files from the 'public' folder
 // Ensure correct MIME types for HLS assets.
+// Compatibility redirect: old "/temp/hls-*" paths now live at root "/hls-*"
+app.get(/^\/temp\/hls-[^/]+\/.+$/, (req, res, next) => {
+  // Only redirect when the asset exists in the new location.
+  // This avoids breaking already-generated assets that still live under public/temp.
+  const target = req.originalUrl.replace(/^\/temp\//, '/');
+  const absoluteTarget = path.join(publicDir, target.replace(/^\//, ''));
+  if (fs.existsSync(absoluteTarget)) {
+    return res.redirect(301, target);
+  }
+  // Let express.static serve from public/temp if present.
+  return next();
+});
+
 app.use(
-  express.static('public', {
+  express.static(publicDir, {
     setHeaders: (res, filePath) => {
+      
+      
+      //TODO 
+
+
+
+
       if (filePath.endsWith('.m3u8')) {
-        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        // Many players expect this exact MIME type for HLS manifests
+        res.setHeader('Content-Type', 'application/x-mpegURL');
+        // Prevent stale manifests during dev; also avoids conditional 304s.
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
       }
       if (filePath.endsWith('.ts')) {
         res.setHeader('Content-Type', 'video/mp2t');
+        // Prevent conditional caching during dev (makes Network tab clearer).
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
       }
     },
   })
